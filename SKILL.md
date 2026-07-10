@@ -1,4 +1,6 @@
-# Blindspot Guardian
+# Aegis
+
+**Aegis** — AI Enhanced Guardian Intelligence System. Named for the mythological shield of protection.
 
 A hosted vehicle blind-spot threat detection service — send it a photo or video and it returns a structured threat assessment (what's approaching, from which side, how dangerous).
 
@@ -17,7 +19,7 @@ curl https://REPLACE-WITH-YOUR-RAILWAY-URL.up.railway.app/health
 Response:
 
 ```json
-{ "status": "ok", "service": "blindspot-guardian" }
+{ "status": "ok", "service": "aegis" }
 ```
 
 ### `POST /analyze`
@@ -83,8 +85,18 @@ Response:
 
 ## The problem
 
-Bicyclist deaths in the U.S. rose 13% in a single year (976 → 1,105, NHTSA 2022 data), and blind-spot collisions from large vehicles are disproportionately deadly — buses hit cyclists from the right side 40% of the time, versus just 6% for vehicles overall. In India, two-wheelers make up nearly half of all road deaths — 177,000 people in 2024. Riders have no way to perceive what's directly behind or beside them. This service is that missing perception layer, callable by anything — a helmet's onboard controller, another agent, a dashboard — that needs to know whether a blind-spot threat is present right now.
+Bicyclist deaths in the U.S. rose 13% in a single year (976 → 1,105, NHTSA 2022 data), and blind-spot collisions from large vehicles are disproportionately deadly — buses hit cyclists from the right side 40% of the time, versus just 6% for vehicles overall. In India, two-wheelers make up nearly half of all road deaths — 177,000 people in 2024. Riders have no way to perceive what's directly behind or beside them. Aegis is that missing perception layer, callable by anything — a helmet's onboard controller, another agent, a dashboard — that needs to know whether a blind-spot threat is present right now.
 
 ## Under the hood
 
-YOLOv8-nano with persistent object tracking, a class-weighted threat score combining proximity and closing speed, temporal smoothing to kill single-frame jitter, a convergence check that distinguishes real closing threats from vehicles just passing in the opposite lane, and hysteresis so the reported threat doesn't flicker between objects. Originally built and validated as the perception layer of a physical smart-helmet prototype (Raspberry Pi 4, rear camera, LED + haptic alerts); this service exposes that same val
+YOLOv8-nano with persistent object tracking, a class-weighted threat score combining proximity and closing speed, temporal smoothing to kill single-frame jitter, a convergence check that distinguishes real closing threats from vehicles just passing in the opposite lane, and hysteresis so the reported threat doesn't flicker between objects. Originally built and validated as the perception layer of a physical smart-helmet prototype (Raspberry Pi 4, rear camera, LED + haptic alerts); this service exposes that same validated logic over HTTP.
+
+## Limits
+
+- `/analyze` (single image) has no motion context, so approach/convergence scoring doesn't apply — use `/analyze_video` for the full picture.
+- Tuned and validated against forward-facing dashcam footage; not yet validated against a true rear-facing helmet camera angle.
+- Does not yet coordinate with other Aegis instances on nearby riders — see "Future" below.
+
+## Future / how this fits the Internet of Agents
+
+Every alert Aegis returns is structured and machine-readable. A coordinator agent could call multiple riders' Aegis endpoints at once — aggregating real-time blind-spot data across a street, a delivery fleet, or a city. That's the "many narrow specialists coordinating over a shared interface" model NANDA's infrastructure is built to support.

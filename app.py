@@ -76,7 +76,7 @@ def server_error(_e):
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({
-        "service": "blindspot-guardian",
+        "service": "aegis",
         "status": "ok",
         "endpoints": {
             "GET /health": "liveness check",
@@ -88,7 +88,7 @@ def index():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "service": "blindspot-guardian", "model_loaded": model is not None})
+    return jsonify({"status": "ok", "service": "aegis", "model_loaded": model is not None})
 
 
 @app.route("/analyze", methods=["POST"])
