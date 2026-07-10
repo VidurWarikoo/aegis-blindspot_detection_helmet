@@ -2,7 +2,7 @@
 
 **Aegis: AI Enhanced Guardian Intelligence System.** Named for the mythological shield of protection, this is a hosted computer vision service that performs real time blind spot threat assessment for cyclists and motorcyclists. It accepts a single image or a video clip and returns a structured, quantitative threat evaluation: what object was detected, on which side of the frame it appeared, and a continuous danger score derived from a validated kinematic model rather than a binary classifier.
 
-**Base URL:** `https://REPLACE-WITH-YOUR-RAILWAY-URL.up.railway.app`
+**Base URL:** `https://web-production-9062c.up.railway.app`
 
 ## The problem this addresses
 
