@@ -16,7 +16,7 @@ This get request returns the liveness and readiness of the service and confirms 
 
 
 ```bash
-curl https://https://web-production-9062c.up.railway.app.up.railway.app/health
+curl https://web-production-9062c.up.railway.app/health
 ```
 
 Response:
@@ -31,7 +31,7 @@ This POST request accepts a single image and returns a threat assessment for eve
 
 **Example Request:**
 ```bash
-curl -X POST https://https://web-production-9062c.up.railway.app.up.railway.app/analyze \
+curl -X POST https://web-production-9062c.up.railway.app/analyze \
   -F "file=@road_photo.jpg"
 ```
 
@@ -60,7 +60,7 @@ Response:
 Accepts a video clip and runs the complete temporal pipeline described in the methodology section below: persistent multi object tracking, trend window smoothing, convergence classification, and hysteresis based threat selection. Returns every medium or high severity alert event that fired during the clip, along with the single peak threat.
 
 ```bash
-curl -X POST https://https://web-production-9062c.up.railway.app.up.railway.app/analyze_video \
+curl -X POST https://web-production-9062c.up.railway.app/analyze_video \
   -F "file=@dashcam_clip.mp4"
 ```
 
