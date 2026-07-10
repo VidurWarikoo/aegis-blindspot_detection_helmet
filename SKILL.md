@@ -1,21 +1,22 @@
-# Aegis
+# AEGIS
 
-**Aegis: AI Enhanced Guardian Intelligence System.** Named for the mythological shield of protection, this is a hosted computer vision service that performs real time blind spot threat assessment for cyclists and motorcyclists. It accepts a single image or a video clip and returns a structured, quantitative threat evaluation: what object was detected, on which side of the frame it appeared, and a continuous danger score derived from a validated kinematic model rather than a binary classifier.
+**AEGIS: AI Enhanced Guardian Intelligence System.** Our name stems from the Greek myth of Aegis, which was the impenetrable shield or breastplate used by Zeus and Athena. The name Aegis symbolizes invincible protection and divine authority, and is a perfect proxy for our project. In this instance, Aegis has been cleverly made into an acronym, which stands for the AI Enhanced Guardian Intelligence System. This is a hosted computer vision service that performs real time blind spot threat assessment for cyclists and motorcyclists. It accepts a single image or a video clip and returns a structured, quantitative threat evaluation: what object was detected, on which side of the frame it appeared, and a continuous danger score derived from a validated kinematic model rather than a binary classifier.
 
 **Base URL:** `https://web-production-9062c.up.railway.app`
 
 ## The problem this addresses
 
-Bicyclist fatalities in the United States increased 13 percent in a single year (976 to 1,105, NHTSA 2022 data). The distribution of this risk is not uniform across vehicle types: buses strike cyclists from the right side in 40 percent of fatal collisions, compared to a 6 percent baseline across all vehicle classes. In India, two wheelers accounted for nearly half of all road deaths in 2024, roughly 177,000 people. The common failure in every one of these cases is perceptual: a rider has no reliable way to observe a vehicle approaching from behind or beside them, since mirrors have limited coverage and turning to check imposes a real cost in balance and reaction time. Aegis is designed as that missing perception layer. It was originally developed and field tested as the software core of a physical smart helmet prototype (Raspberry Pi 4, rear facing camera, LED and haptic output), and this service exposes that same validated detection and scoring pipeline over HTTP so any agent, controller, or dashboard can query it directly.
+Bicyclist fatalities in the United States increased 13 percent in a single year, from 976 to 1105,, according to NHTSA data in 2022. The distribution of this risk is not uniform across vehicle types: buses strike cyclists from the right side in 40 percent of fatal collisions, compared to a 6 percent baseline across all vehicle classes. In India, two wheelers accounted for nearly half of all road deaths in 2024, roughly 177,000 people. The common failure in every one of these cases is perceptual: a rider has no reliable way to observe a vehicle approaching from behind or beside them, since mirrors have limited coverage and turning to check imposes a real cost in balance and reaction time. AEGIS is designed as that missing perception layer. It was originally developed and field tested as the software core of a physical smart helmet prototype with Raspberry Pi 4 technology and rear-facing cameras. This service exposes that same validated detection and scoring pipeline over HTTP so any agent, controller, or dashboard can query it directly.
 
 ## Endpoints
 
 ### `GET /health`
 
-Liveness and readiness check. Confirms the service process is running and the detection model has been successfully loaded into memory.
+This get request returns the liveness and readiness of the service and confirms that the service processes are running and that the detection model has been successfully loaded into memory.
+
 
 ```bash
-curl https://REPLACE-WITH-YOUR-RAILWAY-URL.up.railway.app/health
+curl https://https://web-production-9062c.up.railway.app.up.railway.app/health
 ```
 
 Response:
@@ -26,10 +27,11 @@ Response:
 
 ### `POST /analyze`
 
-Accepts a single image and returns a threat assessment for every detected object in that frame. Because a single image carries no temporal information, the kinematic term of the scoring function described below is identically zero here; only the static proximity term contributes. This endpoint exists as a fast sanity check of the underlying detector; for the complete methodology, use `/analyze_video`.
+This POST request accepts a single image and returns a threat assessment for every detected object in that frame. Since a single image carries no information about the time, the kinematic term of the scoring function described below is identically zero here with only the static proximity term contributing to it. This endpoint exists as a fast sanity check of the underlying detector, whereas, for the complete methodology, use thePOST request `/analyze_video`.
 
+**Example Request:**
 ```bash
-curl -X POST https://REPLACE-WITH-YOUR-RAILWAY-URL.up.railway.app/analyze \
+curl -X POST https://https://web-production-9062c.up.railway.app.up.railway.app/analyze \
   -F "file=@road_photo.jpg"
 ```
 
@@ -58,7 +60,7 @@ Response:
 Accepts a video clip and runs the complete temporal pipeline described in the methodology section below: persistent multi object tracking, trend window smoothing, convergence classification, and hysteresis based threat selection. Returns every medium or high severity alert event that fired during the clip, along with the single peak threat.
 
 ```bash
-curl -X POST https://REPLACE-WITH-YOUR-RAILWAY-URL.up.railway.app/analyze_video \
+curl -X POST https://https://web-production-9062c.up.railway.app.up.railway.app/analyze_video \
   -F "file=@dashcam_clip.mp4"
 ```
 
@@ -78,7 +80,7 @@ Response:
 }
 ```
 
-## How an agent should use this
+## How the AI uses this
 
 1. Call `GET /health` first to confirm the service is live and the model is loaded.
 2. For a single frame handed to an agent, call `POST /analyze` and read `threat_level` and `worst` from the response.
@@ -98,15 +100,15 @@ proximity = A / F
 
 This is a direct, dimensionless measure of how much of the visual field an object currently occupies, used as a proxy for physical closeness under the assumption of a roughly fixed camera field of view.
 
-**Approach rate with trend window smoothing.** A naive closing speed estimate would compare bounding box area between two consecutive frames. In practice this is unusable: single frame area deltas are dominated by detector jitter, small fluctuations in the bounding box regression that have nothing to do with actual object motion. Aegis instead maintains a four frame rolling history of area per tracked object and computes approach rate against the oldest sample in that window rather than the immediately preceding frame:
+**Approach rate with trend window smoothing.** A naive closing speed estimate would compare the bounding box area between two consecutive frames. In practice this is unusable: single frame area deltas are dominated by detector jitter, small fluctuations in the bounding box regression that have nothing to do with actual object motion. AEGIS instead maintains a four frame rolling history of area per tracked object and computes approach rate against the oldest sample in that window rather than the immediately preceding frame:
 
 ```
 approach_rate = max(0, (A_current − A_reference) / A_reference)
 ```
 
-where A_reference is the box area recorded four frames prior. The result is clamped at zero, since a shrinking bounding box indicates recession, which contributes no danger regardless of magnitude. Widening the comparison baseline to four frames reduces the variance of this estimate substantially without introducing meaningful latency at typical video frame rates.
+where `A_reference` is the box area recorded four frames prior. The result is clamped at zero, since a shrinking bounding box indicates recession, which contributes no danger regardless of magnitude. Widening the comparison baseline to four frames reduces the variance of this estimate substantially without introducing meaningful latency at typical video frame rates.
 
-**Convergence classification.** An object can legitimately grow larger in frame while posing no merge risk: a vehicle traveling toward the camera in its own lane on a two way road will exhibit positive approach rate purely from perspective, without ever converging into the observer's actual path. To separate these two cases, Aegis tracks the horizontal offset of each object's bounding box center from the frame's central vertical axis over the same four frame window, and classifies an object as converging only if that offset has measurably decreased:
+**Convergence classification.** An object can legitimately grow larger in frame while posing no merge risk: a vehicle traveling toward the camera in its own lane on a two way road will exhibit positive approach rate purely from perspective, without ever converging into the observer's actual path. To separate these two cases, AEGIS tracks the horizontal offset of each object's bounding box center from the frame's central vertical axis over the same four frame window, and classifies an object as converging only if that offset has measurably decreased:
 
 ```
 offset(t) = |center_x(t) − frame_center_x|
@@ -135,34 +137,39 @@ score < 0.12          -> low / none
 score >= 0.28         -> high
 ```
 
-**Hysteresis based selection.** At every frame the object with the highest instantaneous score is the global maximum candidate. This candidate is not reported directly, because the underlying multi object tracker is subject to identity discontinuities under occlusion: a tracked object can vanish from the detection set for one or more frames and later reappear under a new identity, or be temporarily lost entirely. Naive per frame selection under these conditions produces rapid, visually unstable switching between the reported worst object, a failure mode observed directly during empirical validation. Aegis instead applies two stabilizing constraints. A hysteresis margin requires a new candidate to exceed the currently reported object's score by at least 25 percent before it is permitted to take over. A grace period of six frames allows the currently reported object to remain the reported threat even if it is briefly absent from the current frame's detections, on the assumption that this is a tracking dropout rather than a genuine disappearance, before the system concedes the identity as lost.
+**Hysteresis based selection.** At every frame the object with the highest instantaneous score is the global maximum candidate. This candidate is not reported directly, because the underlying multi-object tracker is subject to identity discontinuities under occlusion: a tracked object can vanish from the detection set for one or more frames and later reappear under a new identity, or be temporarily lost entirely. Naive per frame selection under these conditions produces rapid, visually unstable switching between the reported worst object, a failure mode observed directly during empirical validation. AEGIS instead applies two stabilizing constraints. A hysteresis margin requires a new candidate to exceed the currently reported object's score by at least 25 percent, or a customized set threshold, before it is permitted to take over. A grace period of six frames allows the currently reported object to remain the reported threat even if it is briefly absent from the current frame's detections, on the assumption that this is a tracking dropout rather than a genuine disappearance, before the system concedes the identity as lost.
 
 ## Engineering for real world feasibility
 
-The scoring model above was not designed in the abstract; it is the product of iterative validation against real dashcam footage, in which several concrete failure modes were identified and corrected in turn.
+The aforementioned scoring model was the product of iterative validation against real dashcam footage, in which several concrete failure modes were identified and corrected in turn. They are the following:
 
-**Failure mode one.** Oncoming traffic in the opposite lane was repeatedly misclassified as a closing threat under a naive single frame area comparison, because instantaneous area deltas are dominated by detector jitter rather than genuine motion. This was corrected by moving to the four frame trend window baseline described above.
+Incoming traffic in the opposite lane was repeatedly misclassified as a closing threat under a naive single frame area comparison, because instantaneous area deltas are dominated by detector jitter rather than genuine motion. This was corrected by moving to the four frame trend window baseline described above.
 
-**Failure mode two.** The reported worst object flickered rapidly between multiple simultaneously visible vehicles, caused by per frame reselection with no persistence across the identity discontinuities inherent to the underlying tracker. This was corrected by the hysteresis margin and grace period.
 
-**Failure mode three.** Vehicles traveling toward the camera within their own lane exhibited legitimate positive approach rate from perspective growth alone, despite posing no actual merge risk, since their lateral trajectory never converged toward the observer's path. This was corrected by the convergence classification, which withholds full kinematic credit from any object that is not measurably angling toward the frame center.
+The reported worst object flickered rapidly between multiple simultaneously visible vehicles, caused by per frame reselection with no persistence across the identity discontinuities inherent to the underlying tracker. This was corrected by the hysteresis margin and grace period.
 
-**Failure mode four.** Stationary or parked vehicles at close range triggered alerts from static proximity alone, despite zero closing velocity. This was corrected by the stationary proximity cap. Notably, this correction was validated to preserve the opposite case: a large vehicle passing genuinely close, such as a truck occupying roughly half the frame during a narrow road overtake, is correctly retained as a high severity alert, because its proximity term alone exceeds the point blank threshold regardless of lane or convergence status. This distinction, a close pass by a large vehicle is dangerous and must be flagged even though it originates from the opposite lane, while a parked car of similar size is not dangerous absent any closing motion, was confirmed against footage containing both scenarios before the corrected logic was accepted.
 
-**Failure mode five.** After the corrections above eliminated the noise driven score spikes that the original detection thresholds had been implicitly calibrated against, genuine threats stopped reaching the medium and high classification boundaries entirely. The thresholds were recalibrated downward and reverified against controlled test cases with known object proximity before being finalized at the values shown above.
+Vehicles traveling toward the camera within their own lane exhibited legitimate positive approach rate from perspective growth alone, despite posing no actual merge risk, since their lateral trajectory never converged toward the observer's path. This was corrected by the convergence classification, which withholds full kinematic credit from any object that is not measurably angling toward the frame center.
 
-## System architecture and operational hardening
 
-This service is intended to be called autonomously by an agent with no human supervising the interaction, so it is built to fail safely and predictably rather than to crash.
+Stationary or parked vehicles at close range triggered alerts from static proximity alone, despite zero closing velocity. This was corrected by the stationary proximity cap. Notably, this correction was validated to preserve the opposite case: a large vehicle passing genuinely close, such as a truck occupying roughly half the frame during a narrow road overtake, is correctly retained as a high severity alert, because its proximity term alone exceeds the point blank threshold regardless of lane or convergence status. This distinction, a close pass by a large vehicle is dangerous and must be flagged even though it originates from the opposite lane, while a parked car of similar size is not dangerous absent any closing motion, was confirmed against footage containing both scenarios before the corrected logic was accepted.
+After the corrections above eliminated the noise driven score spikes that the original detection thresholds had been implicitly calibrated against, genuine threats stopped reaching the medium and high classification boundaries entirely. The thresholds were recalibrated downward and reverified against controlled test cases with known object proximity before being finalized at the values shown above.
 
-The detection model (YOLOv8 nano) is bundled directly in the deployment rather than fetched at first request, eliminating any runtime dependency on an external download completing successfully during a cold start. Every request scoped tracker (`ThreatTracker`) is instantiated fresh per call and holds no state between requests, so concurrent requests cannot interfere with one another's track history. File uploads are validated against an explicit extension allowlist before being written to disk or passed to the model, and are capped at 30 megabytes. Video analysis is bounded at 900 processed frames (approximately 30 seconds at 30 frames per second) so a very long or malformed input cannot stall a request indefinitely; if this limit is reached, the response indicates so explicitly via a `truncated` field rather than silently returning partial results. Every error path, including corrupt uploads, unreadable video codecs, and unexpected internal exceptions, returns a structured JSON error object with an appropriate HTTP status code, so a calling agent's response parser is never handed an unparseable HTML error page.
+## System architecture & operational hardening
 
-## Limits
+This service is intended to be called autonomously by an agent with no human supervising the interaction or in the loop, so it is built to fail safely and predictably rather than to crash.
+
+The detection model (YOLOv8 nano) is bundled directly in the deployment rather than fetched at first request, eliminating any runtime dependency on an external download completing successfully during a cold start. Every request scoped tracker (`ThreatTracker`) is instantiated fresh per call and holds no state between requests, so concurrent requests cannot interfere with one another's track history. File uploads are validated against an explicit extension allowlist before being written to disk or passed to the model, and are capped at 30 megabytes. Video analysis is bounded at 900 processed frames (approximately 30 seconds at 30 frames per second) so a very long or malformed input cannot stall a request indefinitely; if this limit is reached, the response indicates so explicitly via a `truncated` field rather than silently returning partial results. Every error path, including corrupt uploads, unreadable video codecs, and unexpected internal exceptions, returns a structured JSON error object with an appropriate HTTP status code, so the calling agent's response parser is never handed an unparseable HTML error page.
+
+## Limitations
+Current limitations of the API and of the product include:
 
 - `POST /analyze` operates on a single frame and therefore has no access to the temporal kinematic term; only the proximity component of the score is meaningful there.
 - The scoring model was tuned and validated against forward facing dashcam footage. It has not yet been separately validated against a true rear facing helmet camera angle, which is the deployment configuration on the physical prototype.
-- The service does not yet coordinate across multiple simultaneous Aegis instances observing the same physical space; see below.
+- The service does not yet coordinate across multiple simultaneous AEGIS instances observing the same physical space; see below.
 
-## Future direction and fit within the Internet of Agents
+## Future Extension
 
-Every alert Aegis returns is structured, timestamped, and machine readable by construction. A coordinator agent could poll or subscribe to multiple riders' Aegis endpoints simultaneously, aggregating blind spot risk data across a street, a delivery fleet, or an entire city in real time. This is precisely the architecture NANDA's infrastructure is designed to support: a collection of narrow, independently verifiable specialist agents, each performing one task well, coordinating through a shared and discoverable interface rather than any single agent attempting to do everything itself.
+Every alert that AEGIS currently returns is structured, timestamped, and readable by machines. Therefore, a coordinator agent could be created, which could poll or subscribe to multiple riders' AEGIS endpoints simultaneously, and aggregate the blind spot risk data across a street or an entire city in real time. 
+
+
