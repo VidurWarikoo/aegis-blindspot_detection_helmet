@@ -1,0 +1,4 @@
+flask
+gunicorn
+ultralytics
+opencv-python-headless
