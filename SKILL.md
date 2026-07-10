@@ -1,16 +1,18 @@
 # Aegis
 
-**Aegis** — AI Enhanced Guardian Intelligence System. Named for the mythological shield of protection.
-
-A hosted vehicle blind-spot threat detection service — send it a photo or video and it returns a structured threat assessment (what's approaching, from which side, how dangerous).
+**Aegis: AI Enhanced Guardian Intelligence System.** Named for the mythological shield of protection, this is a hosted computer vision service that performs real time blind spot threat assessment for cyclists and motorcyclists. It accepts a single image or a video clip and returns a structured, quantitative threat evaluation: what object was detected, on which side of the frame it appeared, and a continuous danger score derived from a validated kinematic model rather than a binary classifier.
 
 **Base URL:** `https://REPLACE-WITH-YOUR-RAILWAY-URL.up.railway.app`
+
+## The problem this addresses
+
+Bicyclist fatalities in the United States increased 13 percent in a single year (976 to 1,105, NHTSA 2022 data). The distribution of this risk is not uniform across vehicle types: buses strike cyclists from the right side in 40 percent of fatal collisions, compared to a 6 percent baseline across all vehicle classes. In India, two wheelers accounted for nearly half of all road deaths in 2024, roughly 177,000 people. The common failure in every one of these cases is perceptual: a rider has no reliable way to observe a vehicle approaching from behind or beside them, since mirrors have limited coverage and turning to check imposes a real cost in balance and reaction time. Aegis is designed as that missing perception layer. It was originally developed and field tested as the software core of a physical smart helmet prototype (Raspberry Pi 4, rear facing camera, LED and haptic output), and this service exposes that same validated detection and scoring pipeline over HTTP so any agent, controller, or dashboard can query it directly.
 
 ## Endpoints
 
 ### `GET /health`
 
-Liveness check.
+Liveness and readiness check. Confirms the service process is running and the detection model has been successfully loaded into memory.
 
 ```bash
 curl https://REPLACE-WITH-YOUR-RAILWAY-URL.up.railway.app/health
@@ -19,12 +21,12 @@ curl https://REPLACE-WITH-YOUR-RAILWAY-URL.up.railway.app/health
 Response:
 
 ```json
-{ "status": "ok", "service": "aegis" }
+{ "status": "ok", "service": "aegis", "model_loaded": true }
 ```
 
 ### `POST /analyze`
 
-Send a single image. Returns every detected vehicle/pedestrian and the single highest-priority threat in that frame. No motion history on a lone image, so this scores proximity only (no "is it approaching" credit) — good for a fast sanity check of the detector.
+Accepts a single image and returns a threat assessment for every detected object in that frame. Because a single image carries no temporal information, the kinematic term of the scoring function described below is identically zero here; only the static proximity term contributes. This endpoint exists as a fast sanity check of the underlying detector; for the complete methodology, use `/analyze_video`.
 
 ```bash
 curl -X POST https://REPLACE-WITH-YOUR-RAILWAY-URL.up.railway.app/analyze \
@@ -45,15 +47,15 @@ Response:
     "x1": 140, "y1": 210, "x2": 420, "y2": 480
   },
   "detections": [
-    { "track_id": 0, "class": "car", "score": 0.181, "side": "LEFT", "...": "..." },
-    { "track_id": 1, "class": "car", "score": 0.006, "side": "RIGHT", "...": "..." }
+    { "track_id": 0, "class": "car", "score": 0.181, "side": "LEFT" },
+    { "track_id": 1, "class": "car", "score": 0.006, "side": "RIGHT" }
   ]
 }
 ```
 
 ### `POST /analyze_video`
 
-Send a short video clip. Runs the full pipeline — persistent object tracking, multi-frame smoothing, convergence checking (tells real closing threats apart from traffic just passing in the opposite lane), and hysteresis (stops the reported threat from flickering between objects). Returns every medium/high alert fired during the clip.
+Accepts a video clip and runs the complete temporal pipeline described in the methodology section below: persistent multi object tracking, trend window smoothing, convergence classification, and hysteresis based threat selection. Returns every medium or high severity alert event that fired during the clip, along with the single peak threat.
 
 ```bash
 curl -X POST https://REPLACE-WITH-YOUR-RAILWAY-URL.up.railway.app/analyze_video \
@@ -65,6 +67,7 @@ Response:
 ```json
 {
   "frames_analyzed": 210,
+  "truncated": false,
   "alert_count": 3,
   "peak_threat": { "frame": 88, "class": "truck", "side": "LEFT", "score": 0.412, "level": "high" },
   "events": [
@@ -77,26 +80,89 @@ Response:
 
 ## How an agent should use this
 
-1. Call `GET /health` first to confirm the service is live.
-2. For a single frame (e.g., a photo an agent has been handed): `POST /analyze` with the image and read `threat_level` and `worst` from the response.
-3. For a clip (e.g., a short dashcam or helmet camera recording): `POST /analyze_video` and read `events` for every medium/high alert that fired, or just `peak_threat` for the single worst moment.
-4. `threat_level` / `level` values are `"none"`, `"low"`, `"medium"`, or `"high"`. Treat `"medium"` and `"high"` as actionable alerts; `"low"`/`"none"` as no action needed.
-5. `side` is `"LEFT"` or `"RIGHT"` — which side of the frame (and therefore the rider/vehicle) the threat is on.
+1. Call `GET /health` first to confirm the service is live and the model is loaded.
+2. For a single frame handed to an agent, call `POST /analyze` and read `threat_level` and `worst` from the response.
+3. For a clip, call `POST /analyze_video` and read `events` for every medium or high alert, or `peak_threat` for the single worst moment in the clip.
+4. `threat_level` and `level` take the values `none`, `low`, `medium`, or `high`. Treat `medium` and `high` as actionable. Treat `low` and `none` as informational only.
+5. `side` is `LEFT` or `RIGHT`, indicating which side of the frame (and therefore the rider) the threat occupies.
 
-## The problem
+## Threat scoring methodology
 
-Bicyclist deaths in the U.S. rose 13% in a single year (976 → 1,105, NHTSA 2022 data), and blind-spot collisions from large vehicles are disproportionately deadly — buses hit cyclists from the right side 40% of the time, versus just 6% for vehicles overall. In India, two-wheelers make up nearly half of all road deaths — 177,000 people in 2024. Riders have no way to perceive what's directly behind or beside them. Aegis is that missing perception layer, callable by anything — a helmet's onboard controller, another agent, a dashboard — that needs to know whether a blind-spot threat is present right now.
+Each frame, every tracked object is assigned a proximity score and a kinematic approach rate, which are combined into a single class weighted danger score. The formulation below is the exact logic implemented in `threat_engine.py`.
 
-## Under the hood
+**Proximity score.** For a bounding box with area A occupying a frame of area F, proximity is defined as:
 
-YOLOv8-nano with persistent object tracking, a class-weighted threat score combining proximity and closing speed, temporal smoothing to kill single-frame jitter, a convergence check that distinguishes real closing threats from vehicles just passing in the opposite lane, and hysteresis so the reported threat doesn't flicker between objects. Originally built and validated as the perception layer of a physical smart-helmet prototype (Raspberry Pi 4, rear camera, LED + haptic alerts); this service exposes that same validated logic over HTTP.
+```
+proximity = A / F
+```
+
+This is a direct, dimensionless measure of how much of the visual field an object currently occupies, used as a proxy for physical closeness under the assumption of a roughly fixed camera field of view.
+
+**Approach rate with trend window smoothing.** A naive closing speed estimate would compare bounding box area between two consecutive frames. In practice this is unusable: single frame area deltas are dominated by detector jitter, small fluctuations in the bounding box regression that have nothing to do with actual object motion. Aegis instead maintains a four frame rolling history of area per tracked object and computes approach rate against the oldest sample in that window rather than the immediately preceding frame:
+
+```
+approach_rate = max(0, (A_current − A_reference) / A_reference)
+```
+
+where A_reference is the box area recorded four frames prior. The result is clamped at zero, since a shrinking bounding box indicates recession, which contributes no danger regardless of magnitude. Widening the comparison baseline to four frames reduces the variance of this estimate substantially without introducing meaningful latency at typical video frame rates.
+
+**Convergence classification.** An object can legitimately grow larger in frame while posing no merge risk: a vehicle traveling toward the camera in its own lane on a two way road will exhibit positive approach rate purely from perspective, without ever converging into the observer's actual path. To separate these two cases, Aegis tracks the horizontal offset of each object's bounding box center from the frame's central vertical axis over the same four frame window, and classifies an object as converging only if that offset has measurably decreased:
+
+```
+offset(t) = |center_x(t) − frame_center_x|
+converging = offset(current) ≤ offset(reference) − 4 pixels
+```
+
+The four pixel margin was chosen empirically to exceed the typical noise floor of the bounding box regression, so ordinary detector jitter is not mistaken for genuine lateral convergence. If an object is not converging, its approach rate is credited at only 20 percent of its computed value when forming the final score. Critically, this discount is applied only to the kinematic term; the proximity term is left untouched, since an object's present closeness is a fact independent of its trajectory.
+
+**Class weighted composite score.** The final raw score for a tracked object is:
+
+```
+score = class_weight × (0.5 × proximity + 0.5 × credited_approach_rate)
+```
+
+Class weights are not arbitrary; they are derived directly from the crash severity statistics cited above. Buses and trucks receive a weight of 1.5, cars 1.2, motorcycles 1.1, and pedestrians and bicycles a baseline of 1.0, reflecting the empirically observed disproportionate lethality of large vehicles in real world cyclist collisions.
+
+**Lateral pass by suppression.** A separate filter targets vehicles crossing the frame laterally at approximately constant range, such as opposite lane traffic passing by without ever closing distance. If an object's average lateral velocity over the trend window exceeds 0.015 frame widths per frame, and its raw approach rate is exactly zero (not merely discounted), its score is multiplied by 0.05. This isolates cross traffic motion specifically, and does not suppress a genuinely close pass: a large vehicle that remains close in frame retains a high proximity term regardless of this filter, which is a deliberate and validated distinction (see the fourth item under validation, below).
+
+**Minimum proximity floor and stationary proximity cap.** Two additional guards constrain the classification. First, any object with proximity below 0.004 (occupying less than four tenths of one percent of the frame) is scored zero unconditionally, removing distant background clutter from consideration regardless of class weight. Second, an object with zero credited approach rate, meaning it is not genuinely closing distance, is capped just below the medium threshold unless its proximity exceeds 0.35. The reasoning is that static or non closing proximity alone should not constitute an actionable alert unless the encounter is already at point blank range, comparable to a vehicle already directly alongside the rider.
+
+**Threat level quantization.** The smoothed score (an eight sample moving average per track, described below) is mapped to a discrete level:
+
+```
+score < 0.12          -> low / none
+0.12 <= score < 0.28  -> medium
+score >= 0.28         -> high
+```
+
+**Hysteresis based selection.** At every frame the object with the highest instantaneous score is the global maximum candidate. This candidate is not reported directly, because the underlying multi object tracker is subject to identity discontinuities under occlusion: a tracked object can vanish from the detection set for one or more frames and later reappear under a new identity, or be temporarily lost entirely. Naive per frame selection under these conditions produces rapid, visually unstable switching between the reported worst object, a failure mode observed directly during empirical validation. Aegis instead applies two stabilizing constraints. A hysteresis margin requires a new candidate to exceed the currently reported object's score by at least 25 percent before it is permitted to take over. A grace period of six frames allows the currently reported object to remain the reported threat even if it is briefly absent from the current frame's detections, on the assumption that this is a tracking dropout rather than a genuine disappearance, before the system concedes the identity as lost.
+
+## Engineering for real world feasibility
+
+The scoring model above was not designed in the abstract; it is the product of iterative validation against real dashcam footage, in which several concrete failure modes were identified and corrected in turn.
+
+**Failure mode one.** Oncoming traffic in the opposite lane was repeatedly misclassified as a closing threat under a naive single frame area comparison, because instantaneous area deltas are dominated by detector jitter rather than genuine motion. This was corrected by moving to the four frame trend window baseline described above.
+
+**Failure mode two.** The reported worst object flickered rapidly between multiple simultaneously visible vehicles, caused by per frame reselection with no persistence across the identity discontinuities inherent to the underlying tracker. This was corrected by the hysteresis margin and grace period.
+
+**Failure mode three.** Vehicles traveling toward the camera within their own lane exhibited legitimate positive approach rate from perspective growth alone, despite posing no actual merge risk, since their lateral trajectory never converged toward the observer's path. This was corrected by the convergence classification, which withholds full kinematic credit from any object that is not measurably angling toward the frame center.
+
+**Failure mode four.** Stationary or parked vehicles at close range triggered alerts from static proximity alone, despite zero closing velocity. This was corrected by the stationary proximity cap. Notably, this correction was validated to preserve the opposite case: a large vehicle passing genuinely close, such as a truck occupying roughly half the frame during a narrow road overtake, is correctly retained as a high severity alert, because its proximity term alone exceeds the point blank threshold regardless of lane or convergence status. This distinction, a close pass by a large vehicle is dangerous and must be flagged even though it originates from the opposite lane, while a parked car of similar size is not dangerous absent any closing motion, was confirmed against footage containing both scenarios before the corrected logic was accepted.
+
+**Failure mode five.** After the corrections above eliminated the noise driven score spikes that the original detection thresholds had been implicitly calibrated against, genuine threats stopped reaching the medium and high classification boundaries entirely. The thresholds were recalibrated downward and reverified against controlled test cases with known object proximity before being finalized at the values shown above.
+
+## System architecture and operational hardening
+
+This service is intended to be called autonomously by an agent with no human supervising the interaction, so it is built to fail safely and predictably rather than to crash.
+
+The detection model (YOLOv8 nano) is bundled directly in the deployment rather than fetched at first request, eliminating any runtime dependency on an external download completing successfully during a cold start. Every request scoped tracker (`ThreatTracker`) is instantiated fresh per call and holds no state between requests, so concurrent requests cannot interfere with one another's track history. File uploads are validated against an explicit extension allowlist before being written to disk or passed to the model, and are capped at 30 megabytes. Video analysis is bounded at 900 processed frames (approximately 30 seconds at 30 frames per second) so a very long or malformed input cannot stall a request indefinitely; if this limit is reached, the response indicates so explicitly via a `truncated` field rather than silently returning partial results. Every error path, including corrupt uploads, unreadable video codecs, and unexpected internal exceptions, returns a structured JSON error object with an appropriate HTTP status code, so a calling agent's response parser is never handed an unparseable HTML error page.
 
 ## Limits
 
-- `/analyze` (single image) has no motion context, so approach/convergence scoring doesn't apply — use `/analyze_video` for the full picture.
-- Tuned and validated against forward-facing dashcam footage; not yet validated against a true rear-facing helmet camera angle.
-- Does not yet coordinate with other Aegis instances on nearby riders — see "Future" below.
+- `POST /analyze` operates on a single frame and therefore has no access to the temporal kinematic term; only the proximity component of the score is meaningful there.
+- The scoring model was tuned and validated against forward facing dashcam footage. It has not yet been separately validated against a true rear facing helmet camera angle, which is the deployment configuration on the physical prototype.
+- The service does not yet coordinate across multiple simultaneous Aegis instances observing the same physical space; see below.
 
-## Future / how this fits the Internet of Agents
+## Future direction and fit within the Internet of Agents
 
-Every alert Aegis returns is structured and machine-readable. A coordinator agent could call multiple riders' Aegis endpoints at once — aggregating real-time blind-spot data across a street, a delivery fleet, or a city. That's the "many narrow specialists coordinating over a shared interface" model NANDA's infrastructure is built to support.
+Every alert Aegis returns is structured, timestamped, and machine readable by construction. A coordinator agent could poll or subscribe to multiple riders' Aegis endpoints simultaneously, aggregating blind spot risk data across a street, a delivery fleet, or an entire city in real time. This is precisely the architecture NANDA's infrastructure is designed to support: a collection of narrow, independently verifiable specialist agents, each performing one task well, coordinating through a shared and discoverable interface rather than any single agent attempting to do everything itself.
