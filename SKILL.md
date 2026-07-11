@@ -58,12 +58,13 @@ Response:
 
 Accepts a single image and returns a threat assessment for every detected object in that frame. Since a single image carries no temporal information, the kinematic term of the scoring function described below is identically zero here, so only the static proximity term contributes to the final score. This endpoint exists as a fast sanity check of the underlying detector, and for the complete methodology you should use `POST /analyze_video` instead.
 
+**Example Request:**
 ```bash
 curl -X POST https://web-production-9062c.up.railway.app/analyze \
   -F "file=@road_photo.jpg"
 ```
 
-Response:
+**Example Response:**
 
 ```json
 {
@@ -85,12 +86,13 @@ Response:
 
 Accepts a video clip and runs the complete temporal pipeline described in the methodology section below: persistent multi object tracking, trend window smoothing, convergence classification, and hysteresis based threat selection. Returns every medium or high severity alert event that fired during the clip, along with the single peak threat.
 
+**Example Request:**
 ```bash
 curl -X POST https://web-production-9062c.up.railway.app/analyze_video \
   -F "file=@dashcam_clip.mp4"
 ```
 
-Response:
+**Example Response:**
 
 ```json
 {
@@ -116,13 +118,14 @@ The physical (or simulated) helmet connects here and sends a continuous sequence
 
 ### `WS /ws/dashboard`
 
-A browser connects here to receive a live push of every processed frame and every alert, from whichever helmet or simulated session is currently active. This is what powers the live feed and alert banner on the dashboard page served at `/`. Two message types arrive on this channel:
+A browser connects here to receive a live push of every processed frame and every alert, from whichever helmet or simulated session is currently active. This is what powers the live feed and alert banner on the dashboard page served at `/`. Two types of messages arrive on this channel:
 
+**Type One:**
 ```json
 { "type": "frame", "source": "helmet", "session_id": "a1b2c3d4", "image": "<base64 jpeg>", "level": "medium",
   "worst": { "track_id": 3, "cls_id": 2, "class": "car", "score": 0.18, "side": "LEFT", "x1": 140, "y1": 210, "x2": 420, "y2": 480 } }
 ```
-
+**Type Two:**
 ```json
 { "type": "alert", "timestamp": "2026-07-10T22:14:03Z", "class": "truck", "side": "LEFT", "score": 0.41, "level": "high", "source": "helmet" }
 ```
@@ -133,12 +136,13 @@ A browser connects here to receive a live push of every processed frame and ever
 
 Accepts a pre recorded video clip and replays it through the exact same live pipeline a real helmet would produce, at the clip's own frame rate, broadcasting each annotated frame to `/ws/dashboard` as it goes. This exists so the full system, live feed, alerting, and history logging, can be demonstrated convincingly without needing the physical hardware connected. The request returns immediately while the streaming happens in the background.
 
+**Example Request:**
 ```bash
 curl -X POST https://web-production-9062c.up.railway.app/simulate_stream \
   -F "file=@dashcam_clip.mp4"
 ```
 
-Response:
+**Example Reason:**
 
 ```json
 { "status": "started", "message": "simulation is now streaming to the dashboard" }
@@ -150,11 +154,12 @@ The frames and alerts themselves never arrive in this response, they only ever a
 
 Returns the alert history as JSON, used by the dashboard to build its charts and history table. Accepts an optional `days` query parameter, defaulting to 30, and an optional `limit`, defaulting to 500.
 
+**Example Request:**
 ```bash
 curl "https://web-production-9062c.up.railway.app/api/alerts?days=7&limit=3"
 ```
 
-Response:
+**Example Response:**
 
 ```json
 [
@@ -169,20 +174,23 @@ Newest first. `source` is `"helmet"`, `"simulated"`, or `"demo"`.
 
 Two additional endpoints exist purely to make the dashboard demo-able, and are not part of the core detection capability. `POST /api/seed_demo_data` inserts a batch of realistic looking alert rows tagged `source: "demo"`, spanning the past week, so the `/history` charts have something to show before real usage accumulates. It never touches real alerts, and is safe to call more than once.
 
+**Example Request:**
 ```bash
 curl -X POST https://web-production-9062c.up.railway.app/api/seed_demo_data
 ```
-
+**Example Response:**
 ```json
 { "status": "ok", "inserted": 27 }
 ```
 
 `POST /api/clear_demo_data` removes every row tagged `source: "demo"`, leaving real helmet and simulated alerts untouched, intended to be run once before final judging or before recording with real footage.
 
+**Example Request:**
 ```bash
 curl -X POST https://web-production-9062c.up.railway.app/api/clear_demo_data
 ```
 
+**Example Response:**
 ```json
 { "status": "ok", "removed": 27 }
 ```
@@ -198,7 +206,7 @@ curl -X POST https://web-production-9062c.up.railway.app/api/clear_demo_data
 7. To watch or relay that same live session visually, open a WebSocket to `WS /ws/dashboard` instead. Read `type: "frame"` messages for the annotated image and current `worst` object, and `type: "alert"` messages for discrete threat events worth logging or narrating.
 8. To pull historical alert data for analysis or reporting, call `GET /api/alerts`, optionally with `days` and `limit`, and read the returned array directly, every entry already has `timestamp`, `class`, `side`, `score`, `level`, and `source`.
 9. Across every endpoint, `threat_level` / `level` takes the values `none`, `low`, `medium`, or `high`. Treat `medium` and `high` as actionable, `low` and `none` as informational only.
-10. Across every endpoint, `side` is `LEFT` or `RIGHT`, indicating which side of the frame, and therefore the rider, the threat occupies.
+10. Across every endpoint, `side` is `LEFT` or `RIGHT`, indicating which side of the frame (and the rider) the threat occupies.
 
 ## Threat scoring methodology
 
