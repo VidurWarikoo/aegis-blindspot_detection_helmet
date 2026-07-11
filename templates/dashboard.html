@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aegis Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --bg: #0b0d10;
@@ -31,6 +30,11 @@
     padding: 16px 24px;
     border-bottom: 1px solid var(--border);
   }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
   header h1 {
     margin: 0;
     font-size: 21px;
@@ -46,6 +50,21 @@
     color: var(--accent);
     flex-shrink: 0;
   }
+  .nav-links {
+    display: flex;
+    gap: 4px;
+  }
+  .nav-link {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .nav-link:hover { color: var(--text); background: var(--panel); }
+  .nav-link.active { color: var(--text); background: var(--panel); border: 1px solid var(--border); }
   .status {
     display: flex;
     align-items: center;
@@ -61,15 +80,15 @@
   }
   .dot.live { background: var(--green); }
   main {
-    display: grid;
-    grid-template-columns: 1.3fr 1fr;
-    gap: 20px;
+    display: flex;
+    justify-content: center;
     padding: 24px;
     max-width: 1400px;
     margin: 0 auto;
   }
-  @media (max-width: 900px) {
-    main { grid-template-columns: 1fr; }
+  main .stack {
+    width: 100%;
+    max-width: 760px;
   }
   .panel {
     background: var(--panel);
@@ -189,26 +208,6 @@
   }
   #alertBanner.medium { background: rgba(255, 176, 32, 0.15); color: var(--amber); border: 1px solid var(--amber); }
   #alertBanner.high { background: rgba(255, 77, 77, 0.15); color: var(--red); border: 1px solid var(--red); }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  th, td {
-    text-align: left;
-    padding: 8px 6px;
-    border-bottom: 1px solid var(--border);
-  }
-  th { color: var(--muted); font-weight: 500; }
-  .level-pill {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-  }
-  .level-pill.medium { background: rgba(255,176,32,0.15); color: var(--amber); }
-  .level-pill.high { background: rgba(255,77,77,0.15); color: var(--red); }
   .stack { display: flex; flex-direction: column; gap: 20px; }
 </style>
 </head>
@@ -217,13 +216,19 @@
 <div id="screenFlash"></div>
 
 <header>
-  <h1>
-    <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M12 2L4 5V11C4 16.5 7.4 21.2 12 22C16.6 21.2 20 16.5 20 11V5L12 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-      <path d="M9 12L11 14L15.5 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    AEGIS
-  </h1>
+  <div class="header-left">
+    <h1>
+      <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M12 2L4 5V11C4 16.5 7.4 21.2 12 22C16.6 21.2 20 16.5 20 11V5L12 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M9 12L11 14L15.5 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      AEGIS
+    </h1>
+    <nav class="nav-links">
+      <a href="/" class="nav-link active">Live feed</a>
+      <a href="/history" class="nav-link">History</a>
+    </nav>
+  </div>
   <div class="status">
     <span class="dot" id="statusDot"></span>
     <span id="statusText">connecting</span>
@@ -245,24 +250,6 @@
       </div>
     </div>
   </div>
-
-  <div class="stack">
-    <div class="panel">
-      <h2>Alerts per day</h2>
-      <canvas id="dailyChart" height="140"></canvas>
-    </div>
-    <div class="panel">
-      <h2>Alerts by class</h2>
-      <canvas id="classChart" height="140"></canvas>
-    </div>
-    <div class="panel">
-      <h2>Recent history</h2>
-      <table>
-        <thead><tr><th>Time</th><th>Class</th><th>Side</th><th>Level</th><th>Score</th></tr></thead>
-        <tbody id="historyBody"></tbody>
-      </table>
-    </div>
-  </div>
 </main>
 
 <script>
@@ -277,7 +264,6 @@ const alertBanner = document.getElementById('alertBanner');
 
 let alertAudioCtx = null;
 let lastAlertSound = 0;
-let lastChartRefresh = 0;
 
 function playAlertTone(level) {
   try {
@@ -339,12 +325,6 @@ function showAlert(alertMsg) {
 
   clearTimeout(showAlert._t);
   showAlert._t = setTimeout(() => { alertBanner.style.display = 'none'; }, 5000);
-
-  const now = Date.now();
-  if (now - lastChartRefresh > 2000) {
-    lastChartRefresh = now;
-    refreshCharts();
-  }
 }
 
 function connectDashboardSocket() {
@@ -385,78 +365,6 @@ document.getElementById('simBtn').addEventListener('click', async () => {
   } catch (e) {}
   setTimeout(() => { btn.disabled = false; btn.textContent = 'Simulate helmet'; }, 3000);
 });
-
-let dailyChart, classChart;
-
-async function refreshCharts() {
-  const res = await fetch('/api/alerts?days=14');
-  const alerts = await res.json();
-
-  const byDay = {};
-  const byClass = {};
-  for (const a of alerts) {
-    const day = a.timestamp.slice(0, 10);
-    byDay[day] = (byDay[day] || 0) + 1;
-    byClass[a.class] = (byClass[a.class] || 0) + 1;
-  }
-  const days = Object.keys(byDay).sort();
-  const dayCounts = days.map(d => byDay[d]);
-  const classNames = Object.keys(byClass);
-  const classCounts = classNames.map(c => byClass[c]);
-
-  const chartColors = { grid: 'rgba(255,255,255,0.06)', text: '#8a8f98' };
-
-  if (!dailyChart) {
-    dailyChart = new Chart(document.getElementById('dailyChart'), {
-      type: 'bar',
-      data: { labels: days, datasets: [{ label: 'alerts', data: dayCounts, backgroundColor: '#4d8cff' }] },
-      options: {
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: chartColors.grid }, ticks: { color: chartColors.text } },
-          y: { beginAtZero: true, grid: { color: chartColors.grid }, ticks: { color: chartColors.text, precision: 0 } }
-        }
-      }
-    });
-  } else {
-    dailyChart.data.labels = days;
-    dailyChart.data.datasets[0].data = dayCounts;
-    dailyChart.update();
-  }
-
-  if (!classChart) {
-    classChart = new Chart(document.getElementById('classChart'), {
-      type: 'bar',
-      data: { labels: classNames, datasets: [{ label: 'alerts', data: classCounts, backgroundColor: '#3ddc84' }] },
-      options: {
-        indexAxis: 'y',
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { beginAtZero: true, grid: { color: chartColors.grid }, ticks: { color: chartColors.text, precision: 0 } },
-          y: { grid: { color: chartColors.grid }, ticks: { color: chartColors.text } }
-        }
-      }
-    });
-  } else {
-    classChart.data.labels = classNames;
-    classChart.data.datasets[0].data = classCounts;
-    classChart.update();
-  }
-
-  const tbody = document.getElementById('historyBody');
-  tbody.innerHTML = '';
-  alerts.slice(0, 25).forEach(a => {
-    const tr = document.createElement('tr');
-    const time = new Date(a.timestamp).toLocaleString();
-    tr.innerHTML = '<td>' + time + '</td><td>' + a.class + '</td><td>' + a.side + '</td>' +
-      '<td><span class="level-pill ' + a.level + '">' + a.level + '</span></td>' +
-      '<td>' + a.score.toFixed(2) + '</td>';
-    tbody.appendChild(tr);
-  });
-}
-
-refreshCharts();
-setInterval(refreshCharts, 20000);
 </script>
 </body>
 </html>

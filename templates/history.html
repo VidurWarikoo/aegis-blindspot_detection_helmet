@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aegis History</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #14171c;
+    --border: #262b33;
+    --text: #e8eaed;
+    --muted: #8a8f98;
+    --green: #3ddc84;
+    --amber: #ffb020;
+    --red: #ff4d4d;
+    --accent: #4d8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-icon {
+    width: 22px;
+    height: 22px;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .nav-links {
+    display: flex;
+    gap: 4px;
+  }
+  .nav-link {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .nav-link:hover { color: var(--text); background: var(--panel); }
+  .nav-link.active { color: var(--text); background: var(--panel); border: 1px solid var(--border); }
+  main {
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .page-heading {
+    margin: 0 0 20px;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .chart-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 800px) {
+    .chart-row { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .panel h2 {
+    margin: 0 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--muted); font-weight: 500; }
+  .level-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .level-pill.medium { background: rgba(255,176,32,0.15); color: var(--amber); }
+  .level-pill.high { background: rgba(255,77,77,0.15); color: var(--red); }
+  .empty-note {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 12px 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>
+      <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M12 2L4 5V11C4 16.5 7.4 21.2 12 22C16.6 21.2 20 16.5 20 11V5L12 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M9 12L11 14L15.5 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      AEGIS
+    </h1>
+    <nav class="nav-links">
+      <a href="/" class="nav-link">Live feed</a>
+      <a href="/history" class="nav-link active">History</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <p class="page-heading">Alert history and statistics, pulled from every helmet and simulated session logged so far.</p>
+
+  <div class="chart-row">
+    <div class="panel">
+      <h2>Alerts per day</h2>
+      <canvas id="dailyChart" height="140"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Alerts by class</h2>
+      <canvas id="classChart" height="140"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Full history</h2>
+    <table>
+      <thead><tr><th>Time</th><th>Class</th><th>Side</th><th>Level</th><th>Score</th></tr></thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+    <p class="empty-note" id="emptyNote" style="display:none;">No alerts recorded yet. Alerts logged from a live helmet or a simulated stream will show up here.</p>
+  </div>
+</main>
+
+<script>
+let dailyChart, classChart;
+
+async function refreshHistory() {
+  const res = await fetch('/api/alerts?days=30');
+  const alerts = await res.json();
+
+  const byDay = {};
+  const byClass = {};
+  for (const a of alerts) {
+    const day = a.timestamp.slice(0, 10);
+    byDay[day] = (byDay[day] || 0) + 1;
+    byClass[a.class] = (byClass[a.class] || 0) + 1;
+  }
+  const days = Object.keys(byDay).sort();
+  const dayCounts = days.map(d => byDay[d]);
+  const classNames = Object.keys(byClass);
+  const classCounts = classNames.map(c => byClass[c]);
+
+  const chartColors = { grid: 'rgba(255,255,255,0.06)', text: '#8a8f98' };
+
+  if (!dailyChart) {
+    dailyChart = new Chart(document.getElementById('dailyChart'), {
+      type: 'bar',
+      data: { labels: days, datasets: [{ label: 'alerts', data: dayCounts, backgroundColor: '#4d8cff' }] },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: chartColors.grid }, ticks: { color: chartColors.text } },
+          y: { beginAtZero: true, grid: { color: chartColors.grid }, ticks: { color: chartColors.text, precision: 0 } }
+        }
+      }
+    });
+  } else {
+    dailyChart.data.labels = days;
+    dailyChart.data.datasets[0].data = dayCounts;
+    dailyChart.update();
+  }
+
+  if (!classChart) {
+    classChart = new Chart(document.getElementById('classChart'), {
+      type: 'bar',
+      data: { labels: classNames, datasets: [{ label: 'alerts', data: classCounts, backgroundColor: '#3ddc84' }] },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, grid: { color: chartColors.grid }, ticks: { color: chartColors.text, precision: 0 } },
+          y: { grid: { color: chartColors.grid }, ticks: { color: chartColors.text } }
+        }
+      }
+    });
+  } else {
+    classChart.data.labels = classNames;
+    classChart.data.datasets[0].data = classCounts;
+    classChart.update();
+  }
+
+  const tbody = document.getElementById('historyBody');
+  const emptyNote = document.getElementById('emptyNote');
+  tbody.innerHTML = '';
+  emptyNote.style.display = alerts.length ? 'none' : 'block';
+  alerts.forEach(a => {
+    const tr = document.createElement('tr');
+    const time = new Date(a.timestamp).toLocaleString();
+    tr.innerHTML = '<td>' + time + '</td><td>' + a.class + '</td><td>' + a.side + '</td>' +
+      '<td><span class="level-pill ' + a.level + '">' + a.level + '</span></td>' +
+      '<td>' + a.score.toFixed(2) + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+refreshHistory();
+setInterval(refreshHistory, 15000);
+</script>
+</body>
+</html>
