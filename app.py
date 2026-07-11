@@ -36,6 +36,7 @@ Hardening notes:
 import base64
 import json
 import os
+import queue
 import random
 import sqlite3
 import tempfile
@@ -520,11 +521,39 @@ def ws_helmet(ws):
     medium or high alert, a short JSON message is sent back down this same connection
     so the physical helmet can fire its own LEDs and motors immediately, independent
     of whether anyone is watching the dashboard.
+
+    Receiving and inference are decoupled on purpose. YOLO inference is slower than
+    the Pi's send rate, so if we ran it inline in this loop, incoming frames would
+    queue up behind a slow ws.receive()/process cycle and the feed would drift
+    further and further behind real time (this is what caused the ~10-15s lag).
+    Instead, this loop's only job is to receive and decode frames as fast as they
+    arrive and drop them into a single-slot queue, always discarding whatever stale
+    frame was waiting there. A separate worker thread continuously pulls the newest
+    available frame and runs detection on it, so the dashboard/helmet always sees
+    the most current frame the model can keep up with, never a growing backlog.
     """
     tracker = ThreatTracker()
     helmet_model = new_model()
     session_id = str(uuid.uuid4())[:8]
     print(f"[aegis] helmet session {session_id} connected")
+
+    latest_frame_q = queue.Queue(maxsize=1)
+    stop_event = threading.Event()
+
+    def infer_worker():
+        while not stop_event.is_set():
+            try:
+                frame = latest_frame_q.get(timeout=1)
+            except queue.Empty:
+                continue
+            try:
+                process_and_broadcast(frame, tracker, helmet_model, source="helmet", session_id=session_id, helmet_ws=ws)
+            except Exception:
+                traceback.print_exc()
+
+    worker = threading.Thread(target=infer_worker, daemon=True)
+    worker.start()
+
     try:
         while True:
             data = ws.receive()
@@ -536,10 +565,23 @@ def ws_helmet(ws):
             frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
             if frame is None:
                 continue
-            process_and_broadcast(frame, tracker, helmet_model, source="helmet", session_id=session_id, helmet_ws=ws)
+            # Always keep only the newest frame: if the worker hasn't finished
+            # the previous one yet, drop it and swap in this one.
+            try:
+                latest_frame_q.put_nowait(frame)
+            except queue.Full:
+                try:
+                    latest_frame_q.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    latest_frame_q.put_nowait(frame)
+                except queue.Full:
+                    pass
     except Exception:
         traceback.print_exc()
     finally:
+        stop_event.set()
         print(f"[aegis] helmet session {session_id} disconnected")
 
 

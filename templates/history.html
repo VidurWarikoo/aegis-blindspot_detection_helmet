@@ -8,42 +8,45 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
 <style>
   :root {
-    --bg: #070a12;
-    --panel: #0f131e;
-    --panel-2: #141a28;
-    --border: #1e2636;
-    --border-strong: #2c3852;
-    --text: #e9edf6;
-    --muted: #8b96ac;
-    --muted-2: #5c6780;
-    --shield: #1fd6a3;
-    --shield-dim: rgba(31,214,163,0.16);
+    --bg: #07070a;
+    --panel: #101013;
+    --panel-2: #16161a;
+    --border: #232328;
+    --border-strong: #35353c;
+    --text: #ece9e2;
+    --muted: #9a978f;
+    --muted-2: #666358;
+    --gold-deep: #8a6a3f;
+    --gold: #c9a26a;
+    --gold-bright: #e8c98a;
+    --gold-dim: rgba(201,162,106,0.14);
+    --steel-dim: #4a4d52;
+    --steel: #9298a0;
+    --steel-bright: #d8dce0;
     --amber: #ffb020;
     --red: #ff4d4d;
-    --trust: #4d8cff;
-    --trust-2: #2dd4c8;
   }
   * { box-sizing: border-box; }
   html {
     scroll-behavior: smooth;
     background: var(--bg);
-    scrollbar-color: #232e42 var(--bg);
+    scrollbar-color: #262626 var(--bg);
     scrollbar-width: thin;
   }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
-  ::-webkit-scrollbar-thumb { background: #232e42; border-radius: 10px; border: 2px solid var(--bg); }
-  ::-webkit-scrollbar-thumb:hover { background: #324062; }
+  ::-webkit-scrollbar-thumb { background: #262626; border-radius: 10px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: #38383a; }
   body {
     margin: 0;
     min-height: 100vh;
     background:
-      radial-gradient(ellipse 1100px 560px at 14% -8%, rgba(77,140,255,0.10), transparent 60%),
-      radial-gradient(ellipse 900px 520px at 104% 4%, rgba(31,214,163,0.06), transparent 55%),
+      radial-gradient(ellipse 1000px 520px at 12% -10%, rgba(201,162,106,0.09), transparent 60%),
+      radial-gradient(ellipse 900px 500px at 105% 6%, rgba(146,152,160,0.07), transparent 55%),
       var(--bg);
     background-attachment: fixed;
     color: var(--text);
@@ -55,22 +58,17 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    background-image:
-      linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
-    background-size: 42px 42px;
-    mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, black 0%, transparent 75%);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.05;
+    mix-blend-mode: overlay;
     z-index: 0;
-    animation: gridDrift 60s linear infinite;
   }
-  @keyframes gridDrift { to { background-position: 84px 84px; } }
-  @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
   header {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 24px;
+    padding: 14px 24px;
     border-bottom: 1px solid var(--border);
     z-index: 1;
   }
@@ -79,52 +77,40 @@
     position: absolute;
     left: 0; right: 0; bottom: -1px;
     height: 1px;
-    background: linear-gradient(90deg, var(--shield), var(--trust) 55%, transparent);
-    opacity: 0.55;
+    background: linear-gradient(90deg, var(--gold), var(--steel) 60%, transparent);
+    opacity: 0.5;
   }
   .header-left { display: flex; align-items: center; gap: 28px; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .logo-badge {
     width: 34px;
     height: 34px;
-    border-radius: 9px;
-    background: linear-gradient(145deg, rgba(31,214,163,0.18), rgba(77,140,255,0.12));
-    border: 1px solid rgba(31,214,163,0.35);
+    border-radius: 8px;
+    background: linear-gradient(145deg, #17140d, #0c0b08);
+    border: 1px solid rgba(201,162,106,0.4);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    position: relative;
   }
-  .logo-badge::before {
-    content: "";
-    position: absolute;
-    inset: -3px;
-    border-radius: 12px;
-    border: 1px solid rgba(31,214,163,0.25);
-    animation: badgeBreathe 3.2s ease-in-out infinite;
-  }
-  @keyframes badgeBreathe {
-    0%, 100% { opacity: 0.35; transform: scale(1); }
-    50% { opacity: 0.85; transform: scale(1.06); }
-  }
-  .logo-icon { width: 18px; height: 18px; color: var(--shield); flex-shrink: 0; }
-  header h1 {
-    margin: 0;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 18px;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-  }
-  header h1 .sub {
+  .logo-icon { width: 20px; height: 20px; flex-shrink: 0; }
+  .brand-name {
     display: block;
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 10px;
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 0.08em;
+    color: var(--text);
+  }
+  .tagline {
+    display: block;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 9.5px;
     font-weight: 500;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.14em;
     color: var(--muted-2);
     text-transform: uppercase;
-    margin-top: 1px;
+    margin-top: 3px;
   }
   .nav-links { display: flex; gap: 4px; }
   .nav-link {
@@ -141,35 +127,11 @@
   }
   .nav-link svg { width: 15px; height: 15px; flex-shrink: 0; }
   .nav-link:hover { color: var(--text); background: var(--panel); }
-  .nav-link.active { color: var(--text); background: var(--panel-2); border: 1px solid var(--border-strong); }
-  @media (prefers-reduced-motion: reduce) { .logo-badge::before { animation: none; } }
-  main {
-    position: relative;
-    z-index: 1;
-    padding: 24px;
-    max-width: 1400px;
-    margin: 0 auto;
-  }
-  .page-heading {
-    margin: 0 0 18px;
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--muted);
-  }
-  .filter-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-  }
-  .filter-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted-2);
-    margin-right: 4px;
-  }
+  .nav-link.active { color: var(--gold-bright); background: var(--panel-2); border: 1px solid var(--border-strong); }
+  main { position: relative; z-index: 1; padding: 24px; max-width: 1400px; margin: 0 auto; }
+  .page-heading { margin: 0 0 18px; font-size: 15px; font-weight: 500; color: var(--muted); }
+  .filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .filter-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-2); margin-right: 4px; }
   .chip {
     background: var(--panel-2);
     border: 1px solid var(--border);
@@ -183,18 +145,13 @@
     transition: all 0.15s ease;
   }
   .chip:hover { border-color: var(--border-strong); color: var(--text); }
-  .chip.active { background: var(--shield-dim); border-color: var(--shield); color: var(--shield); }
-  .stats-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 14px;
-    margin-bottom: 20px;
-  }
+  .chip.active { background: var(--gold-dim); border-color: var(--gold); color: var(--gold-bright); }
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
   @media (max-width: 800px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
   .stat-card {
     background: var(--panel-2);
     border: 1px solid var(--border);
-    border-left: 3px solid var(--accent-color, var(--trust));
+    border-left: 3px solid var(--accent-color, var(--gold));
     border-radius: 10px;
     padding: 14px 16px;
     animation: panelIn 0.4s ease both;
@@ -204,45 +161,24 @@
     gap: 12px;
   }
   .stat-card:hover { transform: translateY(-2px); }
-  .stat-card.c-blue { --accent-color: var(--trust); }
+  .stat-card.c-gold { --accent-color: var(--gold); }
   .stat-card.c-red { --accent-color: var(--red); }
-  .stat-card.c-teal { --accent-color: var(--shield); }
+  .stat-card.c-steel { --accent-color: var(--steel); }
   .stat-card.c-amber { --accent-color: var(--amber); }
   .stat-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+    width: 32px; height: 32px; border-radius: 8px;
     background: color-mix(in srgb, var(--accent-color) 16%, transparent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
   .stat-icon svg { width: 16px; height: 16px; color: var(--accent-color); }
   .stat-body { min-width: 0; }
-  .stat-label {
-    font-size: 11px;
-    color: var(--muted);
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
+  .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
   .stat-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 21px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-family: 'JetBrains Mono', monospace; font-size: 21px; font-weight: 600;
+    letter-spacing: 0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .stat-value.stat-high { color: var(--red); }
-  .chart-row {
-    display: grid;
-    grid-template-columns: 1.3fr 0.8fr 1fr;
-    gap: 20px;
-    margin-bottom: 20px;
-  }
+  .chart-row { display: grid; grid-template-columns: 1.3fr 0.8fr 1fr; gap: 20px; margin-bottom: 20px; }
   @media (max-width: 1000px) { .chart-row { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 640px) { .chart-row { grid-template-columns: 1fr; } }
   .panel {
@@ -252,39 +188,21 @@
     padding: 20px;
     animation: panelIn 0.45s ease both;
     transition: border-color 0.2s ease;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
   }
   .panel:hover { border-color: var(--border-strong); }
   .panel.danger { border-color: rgba(255,77,77,0.35); margin-top: 20px; }
-  @keyframes panelIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .panel, .stat-card { animation: none; }
-    html { scroll-behavior: auto; }
-  }
+  @keyframes panelIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { .panel, .stat-card { animation: none; } html { scroll-behavior: auto; } }
   .panel h2 {
-    margin: 0 0 14px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    display: flex;
-    align-items: center;
-    gap: 9px;
+    margin: 0 0 14px; font-size: 12px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em; display: flex; align-items: center; gap: 9px;
   }
   .icon-badge {
-    width: 24px;
-    height: 24px;
-    border-radius: 7px;
-    background: var(--shield-dim);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    width: 24px; height: 24px; border-radius: 7px; background: var(--gold-dim);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
-  .icon-badge svg { width: 14px; height: 14px; color: var(--shield); }
+  .icon-badge svg { width: 14px; height: 14px; color: var(--gold); }
   .panel.danger .icon-badge { background: rgba(255,77,77,0.14); }
   .panel.danger .icon-badge svg { color: var(--red); }
   .panel.danger p { margin: 0 0 14px; font-size: 13px; color: var(--muted); max-width: 560px; }
@@ -295,7 +213,7 @@
   tbody tr { transition: background 0.12s ease; }
   tbody tr:hover { background: var(--panel-2); }
   .class-cell { display: flex; align-items: center; gap: 8px; font-family: 'Space Grotesk', sans-serif; }
-  .class-cell svg { width: 16px; height: 16px; color: var(--trust-2); flex-shrink: 0; }
+  .class-cell svg { width: 16px; height: 16px; color: var(--steel-bright); flex-shrink: 0; }
   .level-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
   .level-pill.medium { background: rgba(255,176,32,0.15); color: var(--amber); }
   .level-pill.high { background: rgba(255,77,77,0.15); color: var(--red); }
@@ -303,27 +221,28 @@
   .table-scroll { max-height: 460px; overflow-y: auto; }
   .table-count { font-size: 11.5px; color: var(--muted-2); font-weight: 500; text-transform: none; letter-spacing: 0; margin-left: auto; }
   button {
-    background: linear-gradient(135deg, #1a8f6e, #167a5e);
-    color: #fff;
-    border: 1px solid #22a67f;
+    background: linear-gradient(135deg, #8a6a3f, #6e5330);
+    color: #10100d;
+    border: 1px solid var(--gold);
     border-radius: 10px;
     padding: 9px 18px;
     font-family: 'Space Grotesk', sans-serif;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     cursor: pointer;
     transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
   }
-  button:hover:not(:disabled) { background: linear-gradient(135deg, #20a67f, #1a8f6e); border-color: var(--shield); }
+  button:hover:not(:disabled) { background: linear-gradient(135deg, #a67c3d, #8a6a3f); border-color: var(--gold-bright); }
   button:active:not(:disabled) { transform: scale(0.98); }
   button:disabled { opacity: 0.5; cursor: default; }
-  button.danger-btn { background: linear-gradient(135deg, #7a2b2b, #601f1f); border-color: #a33a3a; }
+  button.danger-btn { background: linear-gradient(135deg, #7a2b2b, #601f1f); border-color: #a33a3a; color: #fff; }
   button.danger-btn:hover:not(:disabled) { background: linear-gradient(135deg, #8f3232, #7a2b2b); border-color: var(--red); }
   button[data-armed="true"] {
     background: linear-gradient(135deg, #a3630f, #8a5209) !important;
     border-color: var(--amber) !important;
+    color: #fff;
     animation: armPulse 1.6s ease-in-out infinite;
   }
   @keyframes armPulse {
@@ -334,16 +253,32 @@
 </head>
 <body>
 
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e8c98a"/>
+      <stop offset="100%" stop-color="#8a6a3f"/>
+    </linearGradient>
+  </defs>
+</svg>
+
 <header>
   <div class="header-left">
     <div class="brand">
       <div class="logo-badge">
-        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path d="M12 2L4 5V11C4 16.5 7.4 21.2 12 22C16.6 21.2 20 16.5 20 11V5L12 2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
-          <path d="M9 12L11 14L15.5 9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        <svg class="logo-icon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M24,4 L6,43" stroke="url(#goldGrad)" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M24,4 L42,43" stroke="url(#goldGrad)" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M14.5,23 Q24,16.5 33.5,21.5" stroke="url(#goldGrad)" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+          <path d="M15.5,26.5 Q24,20.5 32.5,25 Q24,31.5 15.5,26.5 Z" fill="url(#goldGrad)"/>
+          <circle cx="22" cy="26" r="2.6" fill="#0c0b08"/>
+          <path d="M32.5,25 Q36.5,29 31.5,32 Q28.5,33.4 30,30" stroke="url(#goldGrad)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
         </svg>
       </div>
-      <h1>AEGIS<span class="sub">blind spot guardian</span></h1>
+      <div>
+        <span class="brand-name">AEGIS</span>
+        <span class="tagline">AI ENHANCED GUARDIAN SYSTEM</span>
+      </div>
     </div>
     <nav class="nav-links">
       <a href="/" class="nav-link">
@@ -369,7 +304,7 @@
   </div>
 
   <div class="stats-row">
-    <div class="stat-card c-blue">
+    <div class="stat-card c-gold">
       <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 10h17M9.2 4.5v15"/></svg></div>
       <div class="stat-body">
         <div class="stat-label">Total alerts</div>
@@ -383,7 +318,7 @@
         <div class="stat-value stat-high" id="statHigh" data-raw="0">0</div>
       </div>
     </div>
-    <div class="stat-card c-teal">
+    <div class="stat-card c-steel">
       <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9M4 12h14M4 18h6"/></svg></div>
       <div class="stat-body">
         <div class="stat-label">Most common class</div>
@@ -481,11 +416,11 @@ function animateCount(el, to) {
 
 function styledTooltip(extra) {
   return Object.assign({
-    backgroundColor: '#141a28',
-    borderColor: '#2c3852',
+    backgroundColor: '#16161a',
+    borderColor: '#35353c',
     borderWidth: 1,
-    titleColor: '#e9edf6',
-    bodyColor: '#8b96ac',
+    titleColor: '#ece9e2',
+    bodyColor: '#9a978f',
     padding: 10,
     cornerRadius: 8,
     titleFont: { family: 'JetBrains Mono', size: 11 },
@@ -529,22 +464,22 @@ function render() {
     ? days.reduce((a, b) => (byDay[a] >= byDay[b] ? a : b))
     : '-';
 
-  const chartColors = { grid: 'rgba(255,255,255,0.06)', text: '#8b96ac' };
+  const chartColors = { grid: 'rgba(255,255,255,0.06)', text: '#9a978f' };
   const updateMode = firstLoad ? undefined : 'none';
 
   const dailyCanvas = document.getElementById('dailyChart');
   if (!dailyChart) {
     const ctx = dailyCanvas.getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, 220);
-    gradient.addColorStop(0, 'rgba(31,214,163,0.35)');
-    gradient.addColorStop(1, 'rgba(31,214,163,0.02)');
+    gradient.addColorStop(0, 'rgba(201,162,106,0.35)');
+    gradient.addColorStop(1, 'rgba(201,162,106,0.02)');
     dailyChart = new Chart(dailyCanvas, {
       type: 'line',
       data: { labels: days, datasets: [{
         label: 'alerts', data: dayCounts,
-        borderColor: '#1fd6a3', backgroundColor: gradient,
-        fill: true, tension: 0.35, pointRadius: 3, pointBackgroundColor: '#1fd6a3',
-        pointBorderColor: '#0f131e', pointBorderWidth: 2, borderWidth: 2
+        borderColor: '#c9a26a', backgroundColor: gradient,
+        fill: true, tension: 0.35, pointRadius: 3, pointBackgroundColor: '#e8c98a',
+        pointBorderColor: '#101013', pointBorderWidth: 2, borderWidth: 2
       }] },
       options: {
         plugins: { legend: { display: false }, tooltip: styledTooltip() },
@@ -563,7 +498,7 @@ function render() {
   if (!severityChart) {
     severityChart = new Chart(document.getElementById('severityChart'), {
       type: 'doughnut',
-      data: { labels: ['Medium', 'High'], datasets: [{ data: [medCount, highCount], backgroundColor: ['#ffb020', '#ff4d4d'], borderColor: '#0f131e', borderWidth: 3 }] },
+      data: { labels: ['Medium', 'High'], datasets: [{ data: [medCount, highCount], backgroundColor: ['#ffb020', '#ff4d4d'], borderColor: '#101013', borderWidth: 3 }] },
       options: {
         cutout: '68%',
         plugins: {
@@ -580,8 +515,8 @@ function render() {
   if (!classChart) {
     const ctx2 = document.getElementById('classChart').getContext('2d');
     const gradient2 = ctx2.createLinearGradient(0, 0, 220, 0);
-    gradient2.addColorStop(0, '#2dd4c8');
-    gradient2.addColorStop(1, '#4d8cff');
+    gradient2.addColorStop(0, '#9298a0');
+    gradient2.addColorStop(1, '#c9a26a');
     classChart = new Chart(document.getElementById('classChart'), {
       type: 'bar',
       data: { labels: classNames, datasets: [{ label: 'alerts', data: classCounts, backgroundColor: gradient2, borderRadius: 6, barThickness: 14 }] },
