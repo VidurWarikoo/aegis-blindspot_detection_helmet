@@ -7,17 +7,30 @@
 <link rel="prefetch" href="/history">
 <style>
   :root {
-    --bg: #0b0d10;
-    --panel: #14171c;
-    --border: #262b33;
-    --text: #e8eaed;
-    --muted: #8a8f98;
+    --bg: #070b14;
+    --panel: #0f1521;
+    --panel-2: #131a28;
+    --border: #1c2536;
+    --border-strong: #2a3650;
+    --text: #e8ecf5;
+    --muted: #8b96ac;
+    --muted-2: #5c6780;
     --green: #3ddc84;
     --amber: #ffb020;
     --red: #ff4d4d;
     --accent: #4d8cff;
   }
   * { box-sizing: border-box; }
+  html {
+    scroll-behavior: smooth;
+    background: var(--bg);
+    scrollbar-color: #232e42 var(--bg);
+    scrollbar-width: thin;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: #232e42; border-radius: 10px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: #324062; }
   body {
     margin: 0;
     background: var(--bg);
@@ -56,6 +69,9 @@
     gap: 4px;
   }
   .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     color: var(--muted);
     text-decoration: none;
     font-size: 13px;
@@ -64,8 +80,9 @@
     border-radius: 6px;
     transition: background 0.15s ease, color 0.15s ease;
   }
+  .nav-link svg { width: 15px; height: 15px; flex-shrink: 0; }
   .nav-link:hover { color: var(--text); background: var(--panel); }
-  .nav-link.active { color: var(--text); background: var(--panel); border: 1px solid var(--border); }
+  .nav-link.active { color: var(--text); background: var(--panel-2); border: 1px solid var(--border-strong); }
   .status {
     display: flex;
     align-items: center;
@@ -78,8 +95,9 @@
     height: 8px;
     border-radius: 50%;
     background: var(--muted);
+    transition: background 0.2s ease, box-shadow 0.2s ease;
   }
-  .dot.live { background: var(--green); }
+  .dot.live { background: var(--green); box-shadow: 0 0 8px rgba(61, 220, 132, 0.6); }
   main {
     display: flex;
     justify-content: center;
@@ -96,6 +114,15 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 20px;
+    animation: panelIn 0.45s ease both;
+  }
+  @keyframes panelIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .panel { animation: none; }
+    html { scroll-behavior: auto; }
   }
   .panel h2 {
     margin: 0 0 14px;
@@ -104,10 +131,15 @@
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.06em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
+  .panel h2 svg { width: 15px; height: 15px; color: var(--accent); flex-shrink: 0; }
   #feedWrap {
     position: relative;
     background: #000;
+    border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
     aspect-ratio: 4 / 3;
@@ -226,8 +258,14 @@
       AEGIS
     </h1>
     <nav class="nav-links">
-      <a href="/" class="nav-link active">Live feed</a>
-      <a href="/history" class="nav-link">History</a>
+      <a href="/" class="nav-link active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.4h6.8L16.4 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.2"/></svg>
+        Live feed
+      </a>
+      <a href="/history" class="nav-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12.5" r="8.5"/><path d="M12 8v4.5l3 2"/></svg>
+        History
+      </a>
     </nav>
   </div>
   <div class="status">
@@ -239,7 +277,10 @@
 <main>
   <div class="stack">
     <div class="panel">
-      <h2>Live feed</h2>
+      <h2>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.4h6.8L16.4 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.2"/></svg>
+        Live feed
+      </h2>
       <div id="feedWrap">
         <span class="placeholder" id="feedPlaceholder">waiting for a helmet or simulated stream</span>
         <img id="liveFeed" style="display:none">

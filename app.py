@@ -36,6 +36,7 @@ Hardening notes:
 import base64
 import json
 import os
+import random
 import sqlite3
 import tempfile
 import threading
@@ -60,9 +61,13 @@ sock = Sock(app)
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 ALLOWED_VIDEO_EXT = {".mp4", ".mov", ".avi", ".mkv"}
 MAX_VIDEO_FRAMES = 900  # about 30s at 30fps, enough for a demo clip or a simulate run
+ALERT_LOG_COOLDOWN_SECONDS = 3.0  # minimum gap before the same track can log again
 
 MODEL_PATH = os.environ.get("MODEL_PATH", os.path.join(os.path.dirname(__file__), "yolov8n.pt"))
-DB_PATH = os.path.join(os.path.dirname(__file__), "aegis.db")
+# defaults to living next to app.py, which is wiped on every redeploy since that is
+# the container's own disk. Set DB_PATH to a path on a mounted Railway Volume (for
+# example /data/aegis.db) to make alert history survive across deploys.
+DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "aegis.db"))
 
 model = YOLO(MODEL_PATH)  # shared instance, only used by /analyze which never tracks
 
@@ -77,6 +82,9 @@ def new_model():
 
 
 def init_db():
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS alerts (
@@ -103,12 +111,12 @@ def log_alert(alert):
     conn.close()
 
 
-def get_alerts(days=30):
+def get_alerts(days=30, limit=500):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
     rows = conn.execute(
-        "SELECT * FROM alerts WHERE timestamp >= ? ORDER BY timestamp DESC", (cutoff,)
+        "SELECT * FROM alerts WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ?", (cutoff, limit)
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -181,7 +189,22 @@ def process_and_broadcast(frame, tracker, model_instance, source, session_id, he
             "level": level,
             "source": source
         }
-        log_alert(alert)
+
+        # A sustained threat scores medium/high on every frame it is visible, which
+        # at eight frames a second would write a near duplicate row every 125ms. Only
+        # write to history when this is a different object than the one we last
+        # logged, or enough time has passed that it is reasonable to treat the same
+        # object as a fresh event worth recording again.
+        now_ts = time.time()
+        is_new_event = (
+            worst["track_id"] != tracker.last_logged_track_id
+            or (now_ts - tracker.last_logged_at) > ALERT_LOG_COOLDOWN_SECONDS
+        )
+        if is_new_event:
+            tracker.last_logged_track_id = worst["track_id"]
+            tracker.last_logged_at = now_ts
+            log_alert(alert)
+
         broadcast_to_dashboards(json.dumps({"type": "alert", **alert}))
         if helmet_ws is not None:
             try:
@@ -235,7 +258,63 @@ def health():
 @app.route("/api/alerts", methods=["GET"])
 def api_alerts():
     days = int(request.args.get("days", 30))
-    return jsonify(get_alerts(days))
+    limit = int(request.args.get("limit", 500))
+    return jsonify(get_alerts(days, limit))
+
+
+DEMO_CLASSES = ["car", "truck", "bus", "motorcycle", "bicycle", "person"]
+DEMO_CLASS_WEIGHTS = [5, 3, 2, 2, 2, 1]
+DEMO_SIDES = ["LEFT", "RIGHT"]
+
+
+@app.route("/api/seed_demo_data", methods=["POST"])
+def seed_demo_data():
+    """
+    Inserts a batch of realistic looking alert history spanning the past week, tagged
+    with source 'demo' so it is always identifiable and always safe to clear later.
+    This exists purely so the history page's charts and table have something worth
+    looking at before enough genuine usage has accumulated to populate them on their
+    own. Call this once against the live deployment, it never touches or replaces
+    real alerts, it only adds rows. Safe to call more than once if you want more data.
+    """
+    now = datetime.utcnow()
+    inserted = 0
+    for days_ago in range(6, -1, -1):
+        day = now - timedelta(days=days_ago)
+        count = random.randint(2, 9)
+        for _ in range(count):
+            cls = random.choices(DEMO_CLASSES, weights=DEMO_CLASS_WEIGHTS)[0]
+            level = random.choices(["medium", "high"], weights=[7, 3])[0]
+            score = round(random.uniform(0.13, 0.27), 4) if level == "medium" else round(random.uniform(0.29, 0.55), 4)
+            ts = day.replace(
+                hour=random.randint(6, 21),
+                minute=random.randint(0, 59),
+                second=random.randint(0, 59),
+                microsecond=random.randint(0, 999999)
+            )
+            log_alert({
+                "timestamp": ts.isoformat() + "Z",
+                "class": cls,
+                "side": random.choice(DEMO_SIDES),
+                "score": score,
+                "level": level,
+                "source": "demo"
+            })
+            inserted += 1
+    return jsonify({"status": "ok", "inserted": inserted})
+
+
+@app.route("/api/clear_demo_data", methods=["POST"])
+def clear_demo_data():
+    """Removes every alert tagged source 'demo', leaving genuine helmet and simulated
+    alerts untouched. Run this before real judging or before recording the final demo
+    video with real footage, so the history page reflects only real activity."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute("DELETE FROM alerts WHERE source = 'demo'")
+    conn.commit()
+    removed = cur.rowcount
+    conn.close()
+    return jsonify({"status": "ok", "removed": removed})
 
 
 @app.route("/analyze", methods=["POST"])

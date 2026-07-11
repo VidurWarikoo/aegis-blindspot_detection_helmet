@@ -72,6 +72,11 @@ class ThreatTracker:
         self.last_seen = {}
         self.current_worst_id = None
         self.frame_num = 0
+        # used by the hosted service to decide when a medium/high result is a new
+        # event worth writing to the alert history, versus the same ongoing threat
+        # still being scored on the next frame
+        self.last_logged_track_id = None
+        self.last_logged_at = 0.0
 
     def update(self, detections, frame_w, frame_h):
         """
