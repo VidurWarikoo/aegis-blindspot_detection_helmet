@@ -136,21 +136,49 @@
     border-color: var(--muted);
   }
   button {
-    background: var(--accent);
+    background: #2a4fa0;
     color: #fff;
-    border: none;
-    border-radius: 8px;
+    border: 1px solid #3a63c0;
+    border-radius: 12px;
     padding: 9px 18px;
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     cursor: pointer;
-    transition: background 0.15s ease, transform 0.1s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
   }
-  button:hover:not(:disabled) { background: #3f7ae6; }
+  button:hover:not(:disabled) { background: #34599f; border-color: var(--accent); }
   button:active:not(:disabled) { transform: scale(0.98); }
   button:disabled { opacity: 0.5; cursor: default; }
+  #screenFlash {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0;
+  }
+  #screenFlash.flash-high { animation: screenFlashHigh 1.2s ease-out; }
+  #screenFlash.flash-medium { animation: screenFlashMedium 1s ease-out; }
+  @keyframes screenFlashHigh {
+    0% { opacity: 0; box-shadow: inset 0 0 0 0 rgba(255,77,77,0); }
+    10% { opacity: 1; box-shadow: inset 0 0 140px 24px rgba(255,77,77,0.55); }
+    30% { opacity: 0.25; box-shadow: inset 0 0 90px 12px rgba(255,77,77,0.25); }
+    50% { opacity: 1; box-shadow: inset 0 0 140px 24px rgba(255,77,77,0.55); }
+    70% { opacity: 0.2; }
+    100% { opacity: 0; box-shadow: inset 0 0 0 0 rgba(255,77,77,0); }
+  }
+  @keyframes screenFlashMedium {
+    0% { opacity: 0; box-shadow: inset 0 0 0 0 rgba(255,176,32,0); }
+    15% { opacity: 0.75; box-shadow: inset 0 0 110px 16px rgba(255,176,32,0.4); }
+    50% { opacity: 0.25; }
+    100% { opacity: 0; box-shadow: inset 0 0 0 0 rgba(255,176,32,0); }
+  }
+  #alertBanner.pulse { animation: bannerPulse 0.45s ease-in-out 3; }
+  @keyframes bannerPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.035); }
+  }
   #alertBanner {
     display: none;
     margin-top: 14px;
@@ -185,6 +213,8 @@
 </style>
 </head>
 <body>
+
+<div id="screenFlash"></div>
 
 <header>
   <h1>
@@ -249,30 +279,64 @@ let alertAudioCtx = null;
 let lastAlertSound = 0;
 let lastChartRefresh = 0;
 
-function playAlertTone() {
-  const now = Date.now();
-  if (now - lastAlertSound < 3000) return;
-  lastAlertSound = now;
+function playAlertTone(level) {
   try {
     if (!alertAudioCtx) alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = alertAudioCtx.createOscillator();
-    const gain = alertAudioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.15, alertAudioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, alertAudioCtx.currentTime + 0.4);
-    osc.connect(gain);
-    gain.connect(alertAudioCtx.destination);
-    osc.start();
-    osc.stop(alertAudioCtx.currentTime + 0.4);
+    const ctx = alertAudioCtx;
+
+    const beep = (freq, start, dur, type, peak) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+      gain.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + start + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur + 0.05);
+    };
+
+    if (level === 'high') {
+      // urgent alternating siren, unmistakable even from across the room
+      beep(920, 0.00, 0.18, 'square', 0.18);
+      beep(650, 0.20, 0.18, 'square', 0.18);
+      beep(920, 0.40, 0.18, 'square', 0.18);
+      beep(650, 0.60, 0.18, 'square', 0.18);
+      beep(920, 0.80, 0.22, 'square', 0.2);
+    } else {
+      // a softer double chime, noticeable but not alarming
+      beep(740, 0.00, 0.16, 'sine', 0.13);
+      beep(740, 0.22, 0.16, 'sine', 0.13);
+    }
   } catch (e) {}
+}
+
+function triggerFlashyAlert(level) {
+  const now = Date.now();
+  if (now - lastAlertSound < 2500) return;
+  lastAlertSound = now;
+
+  alertBanner.classList.remove('pulse');
+  void alertBanner.offsetWidth;
+  alertBanner.classList.add('pulse');
+
+  const flashEl = document.getElementById('screenFlash');
+  flashEl.className = '';
+  void flashEl.offsetWidth;
+  flashEl.className = level === 'high' ? 'flash-high' : 'flash-medium';
+
+  playAlertTone(level);
 }
 
 function showAlert(alertMsg) {
   alertBanner.className = alertMsg.level;
   alertBanner.style.display = 'block';
   alertBanner.textContent = alertMsg.level.toUpperCase() + ' threat: ' + alertMsg.class + ' on the ' + alertMsg.side;
-  playAlertTone();
+
+  triggerFlashyAlert(alertMsg.level);
+
   clearTimeout(showAlert._t);
   showAlert._t = setTimeout(() => { alertBanner.style.display = 'none'; }, 5000);
 
