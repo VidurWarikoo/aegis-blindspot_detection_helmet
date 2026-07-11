@@ -39,6 +39,7 @@ import os
 import queue
 import random
 import sqlite3
+import string
 import tempfile
 import threading
 import time
@@ -47,16 +48,34 @@ import uuid
 from datetime import datetime, timedelta
 
 import cv2
+import gevent
 import numpy as np
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session, send_from_directory
 from flask_sock import Sock
 from ultralytics import YOLO
 
+import near_miss
 from threat_engine import ThreatTracker, VEHICLE_CLASSES, draw_annotations, encode_jpeg
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024  # 30 MB upload cap
-app.config["SOCK_SERVER_OPTIONS"] = {"ping_interval": 25}
+# Needed for Flask's session cookie (the login gate below). This is a demo-flow
+# login, not real account security, so a dev default is fine here, but set a real
+# SECRET_KEY env var on Railway if this ever needs to resist cookie tampering.
+app.secret_key = os.environ.get("SECRET_KEY", "aegis-dev-insecure-secret-change-me")
+# NOTE: deliberately no ping_interval here. flask-sock/simple_websocket spawns its
+# own background thread per connection to send that keepalive ping, and under the
+# gevent worker that thread's socket write can land at the exact same moment our own
+# code (broadcast_to_dashboards / helmet_ws.send) is writing to the same socket.
+# gevent's socket wrapper only tolerates one writer at a time and raises
+# ConcurrentObjectUseError when two greenlets/threads hit it together, which was
+# observed in production killing that ping thread and, worse, occasionally taking our
+# own send() down with it, silently evicting a live dashboard client from
+# dashboard_clients with no error surfaced anywhere. Both clients already handle
+# reconnects (helmet_client.py pings client-side via websocket-client's own
+# ping_interval, and the dashboard JS auto-reconnects on close), so we don't need the
+# server-initiated keepalive badly enough to justify the race it introduces.
+app.config["SOCK_SERVER_OPTIONS"] = {"ping_interval": None}
 sock = Sock(app)
 
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -74,6 +93,26 @@ model = YOLO(MODEL_PATH)  # shared instance, only used by /analyze which never t
 
 dashboard_clients = set()
 dashboard_lock = threading.Lock()
+# A real helmet and a /simulate_stream run (or two helmets) can broadcast to the same
+# dashboard viewer at the same time, each on its own greenlet. gevent's socket only
+# tolerates one writer at a time, so every client gets its own send lock to keep
+# concurrent broadcasts from colliding on the same underlying socket.
+dashboard_send_locks = {}
+
+# Demo-flow helmet pairing. This is deliberately not real device authentication: the
+# code exists so the product can be demoed with a believable "log in, then pair your
+# helmet with this code" flow, but every helmet and every logged-in browser still
+# share the exact same live feed and history underneath. Regenerated each time the
+# server process starts.
+SYNC_CODE = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+pairing_lock = threading.Lock()
+helmet_paired = False
+
+
+def mark_helmet_paired():
+    global helmet_paired
+    with pairing_lock:
+        helmet_paired = True
 
 
 def new_model():
@@ -136,14 +175,22 @@ def _error(message, status=400):
 
 def broadcast_to_dashboards(message):
     with dashboard_lock:
-        dead = []
-        for client in dashboard_clients:
+        clients_snapshot = list(dashboard_clients)
+    dead = []
+    for client in clients_snapshot:
+        lock = dashboard_send_locks.get(client)
+        if lock is None:
+            continue
+        with lock:
             try:
                 client.send(message)
             except Exception:
                 dead.append(client)
-        for d in dead:
-            dashboard_clients.discard(d)
+    if dead:
+        with dashboard_lock:
+            for d in dead:
+                dashboard_clients.discard(d)
+                dashboard_send_locks.pop(d, None)
 
 
 def process_and_broadcast(frame, tracker, model_instance, source, session_id, helmet_ws=None):
@@ -153,7 +200,16 @@ def process_and_broadcast(frame, tracker, model_instance, source, session_id, he
     helmet stream and a simulated upload, so both produce an identical dashboard
     experience."""
     h, w = frame.shape[:2]
+    infer_start = time.time()
     results = model_instance.track(frame, persist=True, classes=VEHICLE_CLASSES, conf=0.4, verbose=False)
+    infer_ms = (time.time() - infer_start) * 1000
+    if infer_ms > 500:
+        # A single YOLO forward pass on this frame took over half a second. If this
+        # keeps showing up, the feed's real-time lag is coming from raw inference
+        # time on the host's CPU, not from queueing or network overhead, and the fix
+        # is a smaller model, a lower input resolution, or more CPU on the host, not
+        # more concurrency plumbing.
+        print(f"[aegis] slow inference: {infer_ms:.0f}ms source={source} session={session_id}")
 
     detections = []
     if results[0].boxes.id is not None:
@@ -167,6 +223,7 @@ def process_and_broadcast(frame, tracker, model_instance, source, session_id, he
 
     worst, level, all_objects = tracker.update(detections, w, h)
     annotated = draw_annotations(frame, all_objects, worst, level)
+    near_miss.record_frame(session_id, annotated)
     jpeg = encode_jpeg(annotated)
     if jpeg is None:
         return
@@ -206,6 +263,11 @@ def process_and_broadcast(frame, tracker, model_instance, source, session_id, he
             tracker.last_logged_at = now_ts
             log_alert(alert)
 
+        if level == "high":
+            # Near-miss clips are for the genuinely dangerous moments, not every
+            # "elevated proximity" medium alert, so only HIGH triggers a recording.
+            near_miss.maybe_start_clip(session_id, alert)
+
         broadcast_to_dashboards(json.dumps({"type": "alert", **alert}))
         if helmet_ws is not None:
             try:
@@ -224,14 +286,66 @@ def server_error(_e):
     return _error("internal error processing the request", 500)
 
 
+@app.before_request
+def require_login_for_pages():
+    """Gates only the two browser-facing pages behind the demo login. Everything
+    else (the WebSockets, /simulate_stream, /api/*, /health, /analyze*) stays open,
+    because the physical helmet has no browser and carries no session cookie -
+    gating those too would just break the real hardware."""
+    if request.endpoint in ("dashboard", "history") and not session.get("logged_in"):
+        return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Demo-flow login: this is not real account security, there is no user store
+    and no password check, any non-empty email/password is accepted. It exists so
+    the product can be demoed with a believable 'sign in, then pair your helmet'
+    flow. Every logged-in browser still sees the exact same shared live feed and
+    history underneath."""
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        if not email or not password:
+            return render_template("login.html", error="Enter an email and password to continue.")
+        session["logged_in"] = True
+        session["email"] = email
+        next_path = request.args.get("next") or url_for("dashboard")
+        return redirect(next_path)
+    return render_template("login.html", error=None)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.route("/api/pairing", methods=["GET"])
+def api_pairing():
+    with pairing_lock:
+        paired = helmet_paired
+    return jsonify({"code": SYNC_CODE, "paired": paired})
+
+
+@app.route("/api/clips", methods=["GET"])
+def api_clips():
+    return jsonify(near_miss.list_clips())
+
+
+@app.route("/api/clips/<path:filename>", methods=["GET"])
+def api_clip_file(filename):
+    return send_from_directory(near_miss.CLIPS_DIR, filename)
+
+
 @app.route("/", methods=["GET"])
 def dashboard():
-    return render_template("dashboard.html")
+    return render_template("dashboard.html", user_email=session.get("email"))
 
 
 @app.route("/history", methods=["GET"])
 def history():
-    return render_template("history.html")
+    return render_template("history.html", user_email=session.get("email"))
 
 
 @app.route("/api/info", methods=["GET"])
@@ -492,13 +606,24 @@ def simulate_stream():
         sim_model = new_model()
         session_id = "sim-" + str(uuid.uuid4())[:8]
         frame_num = 0
+        thread_pool = gevent.get_hub().threadpool
+        # Lets the pairing panel show "connected" during a demo even without the
+        # physical helmet, since a simulated stream is standing in for one.
+        mark_helmet_paired()
         try:
             while frame_num < MAX_VIDEO_FRAMES:
                 ret, frame = cap.read()
                 if not ret:
                     break
                 frame_num += 1
-                process_and_broadcast(frame, tracker, sim_model, source="simulated", session_id=session_id)
+                # Same reasoning as /ws/helmet: keep the CPU-bound inference call off
+                # the main greenlet so a running simulation never stalls dashboard
+                # websocket traffic for other viewers while a frame is processed.
+                thread_pool.spawn(
+                    process_and_broadcast,
+                    frame, tracker, sim_model,
+                    source="simulated", session_id=session_id
+                ).get()
                 time.sleep(delay)
         except Exception:
             traceback.print_exc()
@@ -536,9 +661,11 @@ def ws_helmet(ws):
     helmet_model = new_model()
     session_id = str(uuid.uuid4())[:8]
     print(f"[aegis] helmet session {session_id} connected")
+    mark_helmet_paired()
 
     latest_frame_q = queue.Queue(maxsize=1)
     stop_event = threading.Event()
+    thread_pool = gevent.get_hub().threadpool
 
     def infer_worker():
         while not stop_event.is_set():
@@ -547,7 +674,19 @@ def ws_helmet(ws):
             except queue.Empty:
                 continue
             try:
-                process_and_broadcast(frame, tracker, helmet_model, source="helmet", session_id=session_id, helmet_ws=ws)
+                # model_instance.track() is CPU-bound native code (torch/opencv),
+                # which does not yield back to gevent's event loop while it runs.
+                # threading.Thread under gevent's monkey-patching is a greenlet, not
+                # a real OS thread, so running inference directly on it would still
+                # stall the whole worker process, including this connection's own
+                # ws.receive() loop, for the full duration of every frame. Routing
+                # it through gevent's real OS threadpool lets the event loop keep
+                # servicing ws.receive() and other connections while inference runs.
+                thread_pool.spawn(
+                    process_and_broadcast,
+                    frame, tracker, helmet_model,
+                    source="helmet", session_id=session_id, helmet_ws=ws
+                ).get()
             except Exception:
                 traceback.print_exc()
 
@@ -595,6 +734,7 @@ def ws_dashboard(ws):
     """
     with dashboard_lock:
         dashboard_clients.add(ws)
+        dashboard_send_locks[ws] = threading.Lock()
     try:
         while True:
             data = ws.receive(timeout=30)
@@ -605,6 +745,7 @@ def ws_dashboard(ws):
     finally:
         with dashboard_lock:
             dashboard_clients.discard(ws)
+            dashboard_send_locks.pop(ws, None)
 
 
 if __name__ == "__main__":

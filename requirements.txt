@@ -3,5 +3,6 @@ flask-sock
 gunicorn
 gevent
 ultralytics
+lap>=0.5.12
 opencv-python-headless==4.8.1.78
 numpy

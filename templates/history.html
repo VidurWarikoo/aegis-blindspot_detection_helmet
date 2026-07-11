@@ -84,18 +84,30 @@
   .header-left { display: flex; align-items: center; gap: 28px; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .logo-badge {
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
     background: linear-gradient(145deg, #17140d, #0c0b08);
-    border: 1px solid rgba(201,162,106,0.4);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    overflow: hidden;
+    position: relative;
+    cursor: pointer;
   }
-  .logo-icon { width: 100%; height: 100%; object-fit: cover; flex-shrink: 0; }
+  .logo-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    flex-shrink: 0;
+    transition: transform 0.25s cubic-bezier(0.2,0.7,0.3,1);
+    transform-origin: center;
+  }
+  .logo-badge:hover { z-index: 50; }
+  .logo-badge:hover .logo-icon {
+    transform: scale(3.2);
+    filter: drop-shadow(0 12px 26px rgba(0,0,0,0.65));
+  }
   .brand-name {
     display: block;
     font-family: 'Space Grotesk', sans-serif;
@@ -130,6 +142,27 @@
   .nav-link svg { width: 15px; height: 15px; flex-shrink: 0; }
   .nav-link:hover { color: var(--text); background: var(--panel); }
   .nav-link.active { color: var(--gold-bright); background: var(--panel-2); border: 1px solid var(--border-strong); }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .logout-btn {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .logout-btn:hover { background: var(--panel-2); color: var(--text); border-color: var(--border-strong); }
+  .clips-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .clips-row { grid-template-columns: 1fr; } }
+  .clip-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .clip-card video { width: 100%; display: block; background: #000; aspect-ratio: 4/3; }
+  .clip-meta { padding: 8px 10px; font-size: 11.5px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
   main { position: relative; z-index: 1; padding: 24px; max-width: 1400px; margin: 0 auto; }
   .page-heading { margin: 0 0 18px; font-size: 15px; font-weight: 500; color: var(--muted); }
   .filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -286,6 +319,11 @@
       </a>
     </nav>
   </div>
+  <div class="header-right">
+    <form method="POST" action="/logout">
+      <button type="submit" class="logout-btn" title="{{ user_email or '' }}">Sign out</button>
+    </form>
+  </div>
 </header>
 
 <main>
@@ -366,6 +404,15 @@
       </table>
     </div>
     <p class="empty-note" id="emptyNote" style="display:none;">No alerts recorded yet. Alerts logged from a live helmet or a simulated stream will show up here.</p>
+  </div>
+
+  <div class="panel" style="margin-top:20px;">
+    <h2>
+      <span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9.5 21 7v10l-4-2.5"/></svg></span>
+      Recent near misses
+    </h2>
+    <div class="clips-row" id="clipsRow"></div>
+    <p class="empty-note" id="clipsEmptyNote" style="display:none;">No near-miss clips recorded yet. The 3 most recent HIGH-severity events will show up here.</p>
   </div>
 
   <div class="panel danger">
@@ -600,9 +647,38 @@ armButton(clearDemoBtn, 'Clear demo data', 'Click to confirm delete', async () =
   setTimeout(() => { clearDemoBtn.disabled = false; clearDemoBtn.textContent = 'Clear demo data'; }, 2500);
 });
 
+function parseClipFilename(name) {
+  const m = name.match(/^nearmiss_(.+)_([a-z]+)_(left|right)\.mp4$/i);
+  if (!m) return { time: name, cls: '', side: '' };
+  let time;
+  try { time = new Date(m[1].slice(0, 10) + 'T' + m[1].slice(11).replace(/-/g, ':')).toLocaleString(); }
+  catch (e) { time = m[1]; }
+  return { time, cls: m[2], side: m[3] };
+}
+
+async function refreshClips() {
+  const row = document.getElementById('clipsRow');
+  const emptyNote = document.getElementById('clipsEmptyNote');
+  try {
+    const res = await fetch('/api/clips');
+    const files = await res.json();
+    emptyNote.style.display = files.length ? 'none' : 'block';
+    row.innerHTML = files.map(f => {
+      const meta = parseClipFilename(f);
+      const icon = CLASS_ICONS[meta.cls] || '';
+      return '<div class="clip-card">' +
+        '<video controls preload="metadata" src="/api/clips/' + encodeURIComponent(f) + '"></video>' +
+        '<div class="clip-meta"><span class="class-cell">' + icon + (meta.cls || 'unknown') + ' / ' + meta.side + '</span><br>' + meta.time + '</div>' +
+        '</div>';
+    }).join('');
+  } catch (e) {}
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   refreshHistory();
+  refreshClips();
   setInterval(refreshHistory, 15000);
+  setInterval(refreshClips, 15000);
 });
 </script>
 </body>

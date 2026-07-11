@@ -82,18 +82,30 @@
   .header-left { display: flex; align-items: center; gap: 28px; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .logo-badge {
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
     background: linear-gradient(145deg, #17140d, #0c0b08);
-    border: 1px solid rgba(201,162,106,0.4);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    overflow: hidden;
+    position: relative;
+    cursor: pointer;
   }
-  .logo-icon { width: 100%; height: 100%; object-fit: cover; flex-shrink: 0; }
+  .logo-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    flex-shrink: 0;
+    transition: transform 0.25s cubic-bezier(0.2,0.7,0.3,1);
+    transform-origin: center;
+  }
+  .logo-badge:hover { z-index: 50; }
+  .logo-badge:hover .logo-icon {
+    transform: scale(3.2);
+    filter: drop-shadow(0 12px 26px rgba(0,0,0,0.65));
+  }
   .brand-name {
     display: block;
     font-family: 'Space Grotesk', sans-serif;
@@ -128,6 +140,7 @@
   .nav-link svg { width: 15px; height: 15px; flex-shrink: 0; }
   .nav-link:hover { color: var(--text); background: var(--panel); }
   .nav-link.active { color: var(--gold-bright); background: var(--panel-2); border: 1px solid var(--border-strong); }
+  .header-right { display: flex; align-items: center; gap: 12px; }
   .status {
     display: flex;
     align-items: center;
@@ -140,6 +153,38 @@
     padding: 7px 14px;
     border-radius: 20px;
   }
+  .logout-btn {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .logout-btn:hover { background: var(--panel-2); color: var(--text); border-color: var(--border-strong); }
+  .pairing-code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--gold-bright);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+    margin: 4px 0 10px;
+  }
+  .pairing-status { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .pairing-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--steel-dim); flex-shrink: 0; }
+  .pairing-status.connected .dot { background: var(--gold-bright); box-shadow: 0 0 6px rgba(232,201,138,0.8); }
+  .pairing-status.connected { color: var(--gold-bright); }
   .beacon { position: relative; width: 9px; height: 9px; }
   .beacon .core { position: absolute; inset: 0; border-radius: 50%; background: var(--steel-dim); }
   .beacon .ring { position: absolute; inset: -6px; border-radius: 50%; border: 1px solid var(--steel-dim); opacity: 0; }
@@ -329,9 +374,14 @@
       </a>
     </nav>
   </div>
-  <div class="status" id="statusChip">
-    <span class="beacon"><span class="ring"></span><span class="core"></span></span>
-    <span id="statusText">connecting</span>
+  <div class="header-right">
+    <div class="status" id="statusChip">
+      <span class="beacon"><span class="ring"></span><span class="core"></span></span>
+      <span id="statusText">connecting</span>
+    </div>
+    <form method="POST" action="/logout">
+      <button type="submit" class="logout-btn" title="{{ user_email or '' }}">Sign out</button>
+    </form>
   </div>
 </header>
 
@@ -365,6 +415,15 @@
     </div>
 
     <div class="side-stack">
+      <div class="panel">
+        <h2>
+          <span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="9" width="16" height="11" rx="2"/><path d="M8 9V6.5a4 4 0 0 1 8 0V9"/></svg></span>
+          Pair your helmet
+        </h2>
+        <div class="pairing-code" id="pairingCode">------</div>
+        <div class="pairing-status" id="pairingStatus"><span class="dot"></span><span id="pairingStatusText">Waiting for a helmet...</span></div>
+        <p class="hint" style="margin-top:10px;">Enter this code in the helmet's companion setup to link it to your account.</p>
+      </div>
       <div class="panel">
         <h2>
           <span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="5.5"/></svg></span>
@@ -489,6 +548,27 @@ function connectDashboardSocket() {
   };
 }
 connectDashboardSocket();
+
+const pairingCodeEl = document.getElementById('pairingCode');
+const pairingStatusEl = document.getElementById('pairingStatus');
+const pairingStatusTextEl = document.getElementById('pairingStatusText');
+
+async function pollPairing() {
+  try {
+    const res = await fetch('/api/pairing');
+    const data = await res.json();
+    pairingCodeEl.textContent = data.code;
+    if (data.paired) {
+      pairingStatusEl.classList.add('connected');
+      pairingStatusTextEl.textContent = 'Helmet connected';
+    } else {
+      pairingStatusEl.classList.remove('connected');
+      pairingStatusTextEl.textContent = 'Waiting for a helmet...';
+    }
+  } catch (e) {}
+}
+pollPairing();
+setInterval(pollPairing, 4000);
 
 function armButton(btn, idleLabel, confirmLabel, action) {
   let armed = false;
