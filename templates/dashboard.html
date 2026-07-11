@@ -33,9 +33,18 @@
   }
   header h1 {
     margin: 0;
-    font-size: 20px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-icon {
+    width: 22px;
+    height: 22px;
+    color: var(--accent);
+    flex-shrink: 0;
   }
   .status {
     display: flex;
@@ -108,16 +117,39 @@
     color: var(--muted);
     font-size: 13px;
   }
+  input[type=file]::file-selector-button,
+  input[type=file]::-webkit-file-upload-button {
+    background: #1a1e25;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-right: 10px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  input[type=file]::file-selector-button:hover,
+  input[type=file]::-webkit-file-upload-button:hover {
+    background: #232830;
+    border-color: var(--muted);
+  }
   button {
     background: var(--accent);
     color: #fff;
     border: none;
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-size: 13px;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-size: 12px;
     font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
   }
+  button:hover:not(:disabled) { background: #3f7ae6; }
+  button:active:not(:disabled) { transform: scale(0.98); }
   button:disabled { opacity: 0.5; cursor: default; }
   #alertBanner {
     display: none;
@@ -155,7 +187,13 @@
 <body>
 
 <header>
-  <h1>AEGIS</h1>
+  <h1>
+    <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M12 2L4 5V11C4 16.5 7.4 21.2 12 22C16.6 21.2 20 16.5 20 11V5L12 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M9 12L11 14L15.5 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    AEGIS
+  </h1>
   <div class="status">
     <span class="dot" id="statusDot"></span>
     <span id="statusText">connecting</span>

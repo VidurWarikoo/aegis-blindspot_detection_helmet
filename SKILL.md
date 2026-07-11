@@ -31,7 +31,7 @@ Response:
 
 ### `POST /analyze`
 
-This POST request accepts a single image and returns a threat assessment for every detected object in that frame. Since a single image carries no information about the time, the kinematic term of the scoring function described below is identically zero here with only the static proximity term contributing to it. This endpoint exists as a fast sanity check of the underlying detector, whereas, for the complete methodology, use thePOST request `/analyze_video`.
+This POST request accepts a single image and returns a threat assessment for every detected object in that frame. Since a single image carries no temporal information, the kinematic term of the scoring function described below is identically zero here, so only the static proximity term contributes to the final score. This endpoint exists as a fast sanity check of the underlying detector, and for the complete methodology you should use `POST /analyze_video` instead.
 
 **Example Request:**
 ```bash
