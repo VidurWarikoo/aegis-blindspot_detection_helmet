@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aegis Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #14171c;
+    --border: #262b33;
+    --text: #e8eaed;
+    --muted: #8a8f98;
+    --green: #3ddc84;
+    --amber: #ffb020;
+    --red: #ff4d4d;
+    --accent: #4d8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .dot.live { background: var(--green); }
+  main {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 20px;
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .panel h2 {
+    margin: 0 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  #feedWrap {
+    position: relative;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #feedWrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  #feedWrap .placeholder {
+    color: var(--muted);
+    font-size: 14px;
+    text-align: center;
+    padding: 0 20px;
+  }
+  .simulate-row {
+    margin-top: 14px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  input[type=file] {
+    flex: 1;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #alertBanner {
+    display: none;
+    margin-top: 14px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  #alertBanner.medium { background: rgba(255, 176, 32, 0.15); color: var(--amber); border: 1px solid var(--amber); }
+  #alertBanner.high { background: rgba(255, 77, 77, 0.15); color: var(--red); border: 1px solid var(--red); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--muted); font-weight: 500; }
+  .level-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .level-pill.medium { background: rgba(255,176,32,0.15); color: var(--amber); }
+  .level-pill.high { background: rgba(255,77,77,0.15); color: var(--red); }
+  .stack { display: flex; flex-direction: column; gap: 20px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AEGIS</h1>
+  <div class="status">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">connecting</span>
+  </div>
+</header>
+
+<main>
+  <div class="stack">
+    <div class="panel">
+      <h2>Live feed</h2>
+      <div id="feedWrap">
+        <span class="placeholder" id="feedPlaceholder">waiting for a helmet or simulated stream</span>
+        <img id="liveFeed" style="display:none">
+      </div>
+      <div id="alertBanner"></div>
+      <div class="simulate-row">
+        <input type="file" id="simFile" accept="video/*">
+        <button id="simBtn">Simulate helmet</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="panel">
+      <h2>Alerts per day</h2>
+      <canvas id="dailyChart" height="140"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Alerts by class</h2>
+      <canvas id="classChart" height="140"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Recent history</h2>
+      <table>
+        <thead><tr><th>Time</th><th>Class</th><th>Side</th><th>Level</th><th>Score</th></tr></thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const wsScheme = location.protocol === 'https:' ? 'wss' : 'ws';
+const dashWsUrl = wsScheme + '://' + location.host + '/ws/dashboard';
+
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const feedImg = document.getElementById('liveFeed');
+const feedPlaceholder = document.getElementById('feedPlaceholder');
+const alertBanner = document.getElementById('alertBanner');
+
+let alertAudioCtx = null;
+let lastAlertSound = 0;
+let lastChartRefresh = 0;
+
+function playAlertTone() {
+  const now = Date.now();
+  if (now - lastAlertSound < 3000) return;
+  lastAlertSound = now;
+  try {
+    if (!alertAudioCtx) alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = alertAudioCtx.createOscillator();
+    const gain = alertAudioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, alertAudioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, alertAudioCtx.currentTime + 0.4);
+    osc.connect(gain);
+    gain.connect(alertAudioCtx.destination);
+    osc.start();
+    osc.stop(alertAudioCtx.currentTime + 0.4);
+  } catch (e) {}
+}
+
+function showAlert(alertMsg) {
+  alertBanner.className = alertMsg.level;
+  alertBanner.style.display = 'block';
+  alertBanner.textContent = alertMsg.level.toUpperCase() + ' threat: ' + alertMsg.class + ' on the ' + alertMsg.side;
+  playAlertTone();
+  clearTimeout(showAlert._t);
+  showAlert._t = setTimeout(() => { alertBanner.style.display = 'none'; }, 5000);
+
+  const now = Date.now();
+  if (now - lastChartRefresh > 2000) {
+    lastChartRefresh = now;
+    refreshCharts();
+  }
+}
+
+function connectDashboardSocket() {
+  const ws = new WebSocket(dashWsUrl);
+  ws.onopen = () => {
+    statusDot.classList.add('live');
+    statusText.textContent = 'live';
+  };
+  ws.onclose = () => {
+    statusDot.classList.remove('live');
+    statusText.textContent = 'reconnecting';
+    setTimeout(connectDashboardSocket, 2000);
+  };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (evt) => {
+    const msg = JSON.parse(evt.data);
+    if (msg.type === 'frame') {
+      feedPlaceholder.style.display = 'none';
+      feedImg.style.display = 'block';
+      feedImg.src = 'data:image/jpeg;base64,' + msg.image;
+    } else if (msg.type === 'alert') {
+      showAlert(msg);
+    }
+  };
+}
+connectDashboardSocket();
+
+document.getElementById('simBtn').addEventListener('click', async () => {
+  const fileInput = document.getElementById('simFile');
+  if (!fileInput.files.length) { alert('choose a video file first'); return; }
+  const btn = document.getElementById('simBtn');
+  btn.disabled = true;
+  btn.textContent = 'streaming...';
+  const form = new FormData();
+  form.append('file', fileInput.files[0]);
+  try {
+    await fetch('/simulate_stream', { method: 'POST', body: form });
+  } catch (e) {}
+  setTimeout(() => { btn.disabled = false; btn.textContent = 'Simulate helmet'; }, 3000);
+});
+
+let dailyChart, classChart;
+
+async function refreshCharts() {
+  const res = await fetch('/api/alerts?days=14');
+  const alerts = await res.json();
+
+  const byDay = {};
+  const byClass = {};
+  for (const a of alerts) {
+    const day = a.timestamp.slice(0, 10);
+    byDay[day] = (byDay[day] || 0) + 1;
+    byClass[a.class] = (byClass[a.class] || 0) + 1;
+  }
+  const days = Object.keys(byDay).sort();
+  const dayCounts = days.map(d => byDay[d]);
+  const classNames = Object.keys(byClass);
+  const classCounts = classNames.map(c => byClass[c]);
+
+  const chartColors = { grid: 'rgba(255,255,255,0.06)', text: '#8a8f98' };
+
+  if (!dailyChart) {
+    dailyChart = new Chart(document.getElementById('dailyChart'), {
+      type: 'bar',
+      data: { labels: days, datasets: [{ label: 'alerts', data: dayCounts, backgroundColor: '#4d8cff' }] },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: chartColors.grid }, ticks: { color: chartColors.text } },
+          y: { beginAtZero: true, grid: { color: chartColors.grid }, ticks: { color: chartColors.text, precision: 0 } }
+        }
+      }
+    });
+  } else {
+    dailyChart.data.labels = days;
+    dailyChart.data.datasets[0].data = dayCounts;
+    dailyChart.update();
+  }
+
+  if (!classChart) {
+    classChart = new Chart(document.getElementById('classChart'), {
+      type: 'bar',
+      data: { labels: classNames, datasets: [{ label: 'alerts', data: classCounts, backgroundColor: '#3ddc84' }] },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, grid: { color: chartColors.grid }, ticks: { color: chartColors.text, precision: 0 } },
+          y: { grid: { color: chartColors.grid }, ticks: { color: chartColors.text } }
+        }
+      }
+    });
+  } else {
+    classChart.data.labels = classNames;
+    classChart.data.datasets[0].data = classCounts;
+    classChart.update();
+  }
+
+  const tbody = document.getElementById('historyBody');
+  tbody.innerHTML = '';
+  alerts.slice(0, 25).forEach(a => {
+    const tr = document.createElement('tr');
+    const time = new Date(a.timestamp).toLocaleString();
+    tr.innerHTML = '<td>' + time + '</td><td>' + a.class + '</td><td>' + a.side + '</td>' +
+      '<td><span class="level-pill ' + a.level + '">' + a.level + '</span></td>' +
+      '<td>' + a.score.toFixed(2) + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+refreshCharts();
+setInterval(refreshCharts, 20000);
+</script>
+</body>
+</html>

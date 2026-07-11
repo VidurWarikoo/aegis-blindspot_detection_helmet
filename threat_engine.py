@@ -19,9 +19,16 @@ Fixes baked in here (all validated against real dashcam footage before porting):
 
 from collections import defaultdict, deque
 
+import cv2
+
 VEHICLE_CLASSES = [0, 1, 2, 3, 5, 7]  # person, bicycle, car, motorcycle, bus, truck
 CLASS_NAMES = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 5: 'bus', 7: 'truck'}
 CLASS_WEIGHTS = {0: 1.0, 1: 1.0, 2: 1.2, 3: 1.1, 5: 1.5, 7: 1.5}
+
+BOX_COLOR_LOW = (120, 200, 120)     # green, BGR
+BOX_COLOR_MEDIUM = (0, 210, 255)    # amber, BGR
+BOX_COLOR_HIGH = (0, 0, 255)        # red, BGR
+WORST_TRACK_ID_KEY = 'track_id'
 
 ALPHA = 0.5  # weight for proximity
 BETA = 0.5   # weight for approach rate
@@ -165,3 +172,54 @@ class ThreatTracker:
 
         level = get_threat_level(worst['score'])
         return worst, level, scored_objects
+
+
+def draw_annotations(frame, scored_objects, worst, level):
+    """
+    Draws a bounding box and label for every scored object directly onto the frame,
+    highlighting whichever object is currently the reported worst threat. Used by the
+    hosted service to produce annotated JPEGs for the live dashboard, so the browser
+    only ever has to display an image, no client side box drawing required.
+
+    frame: a BGR image (numpy array) as returned by cv2.VideoCapture / cv2.imdecode
+    scored_objects: the third return value of ThreatTracker.update()
+    worst: the first return value of ThreatTracker.update() (or None)
+    level: the second return value of ThreatTracker.update()
+
+    Returns the same frame, annotated in place.
+    """
+    worst_id = worst[WORST_TRACK_ID_KEY] if worst else None
+
+    for obj in scored_objects:
+        is_worst = obj[WORST_TRACK_ID_KEY] == worst_id
+        obj_level = level if is_worst else get_threat_level(obj['score'])
+
+        if obj_level == 'high':
+            color = BOX_COLOR_HIGH
+        elif obj_level == 'medium':
+            color = BOX_COLOR_MEDIUM
+        else:
+            color = BOX_COLOR_LOW
+
+        thickness = 3 if is_worst else 1
+        cv2.rectangle(frame, (obj['x1'], obj['y1']), (obj['x2'], obj['y2']), color, thickness)
+
+        label = f"{obj['class']} {obj['score']:.2f}"
+        cv2.putText(frame, label, (obj['x1'], max(20, obj['y1'] - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+    if worst and level in ('medium', 'high'):
+        banner_color = BOX_COLOR_HIGH if level == 'high' else BOX_COLOR_MEDIUM
+        banner_text = f"{level.upper()} THREAT - {worst['class'].upper()} {worst['side']}"
+        cv2.rectangle(frame, (0, 0), (frame.shape[1], 40), banner_color, -1)
+        cv2.putText(frame, banner_text, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+    return frame
+
+
+def encode_jpeg(frame, quality=70):
+    """Encodes a BGR frame to JPEG bytes for sending over the WebSocket."""
+    ok, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    if not ok:
+        return None
+    return buf.tobytes()

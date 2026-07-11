@@ -1,8 +1,12 @@
 # AEGIS
 
-**AEGIS: AI Enhanced Guardian Intelligence System.** Our name stems from the Greek myth of Aegis, which was the impenetrable shield or breastplate used by Zeus and Athena. The name Aegis symbolizes invincible protection and divine authority, and is a perfect proxy for our project. In this instance, Aegis has been cleverly made into an acronym, which stands for the AI Enhanced Guardian Intelligence System. This is a hosted computer vision service that performs real time blind spot threat assessment for cyclists and motorcyclists. It accepts a single image or a video clip and returns a structured, quantitative threat evaluation: what object was detected, on which side of the frame it appeared, and a continuous danger score derived from a validated kinematic model rather than a binary classifier.
+**AEGIS: AI Enhanced Guardian Intelligence System.** Our name stems from the Greek myth of Aegis, which was the impenetrable shield or breastplate used by Zeus and Athena. The name Aegis symbolizes invincible protection and divine authority, and is a perfect proxy for our project. In this instance, Aegis has been cleverly made into an acronym, which stands for the AI Enhanced Guardian Intelligence System. This is a hosted computer vision service that performs real time blind spot threat assessment for cyclists and motorcyclists.
+
+AEGIS is built as a distributed system, not a single embedded gadget. The physical helmet is a thin edge sensor that only captures and streams frames, it runs no detection of its own. Every frame is sent to this hosted service, which is where the actual intelligence lives: the YOLOv8 detector, the full tracking and threat scoring pipeline described below, and the decision of whether something is genuinely dangerous. When the answer is yes, two things happen at once. A message is sent back to the physical helmet so it can fire its own LEDs and vibration motor immediately, and the same alert is pushed live to a connected web dashboard, hosted at this same base URL, which shows the annotated video feed in real time and keeps a running history of every unsafe moment for later review and comparison.
 
 **Base URL:** `https://web-production-9062c.up.railway.app`
+
+**Live dashboard:** open the base URL directly in a browser to see the operator view: a live annotated feed, an alert banner with sound for medium and high threats, a button to replay a pre recorded clip through the full pipeline without needing the physical helmet connected, and charts built from the alert history.
 
 ## The problem this addresses
 
@@ -80,13 +84,48 @@ Response:
 }
 ```
 
+### `WS /ws/helmet`
+
+The physical (or simulated) helmet connects here and sends a continuous sequence of binary WebSocket messages, each one a JPEG encoded frame. There is no request or response in the usual sense, this is a persistent streaming connection. Every frame is run through detection and scoring, using a tracker and model instance dedicated to this connection so concurrent sessions never share tracking state. Whenever a frame produces a medium or high alert, a short JSON message is sent back down this same connection so the helmet can act immediately:
+
+```json
+{ "type": "alert", "level": "high", "side": "LEFT" }
+```
+
+### `WS /ws/dashboard`
+
+A browser connects here to receive a live push of every processed frame and every alert, from whichever helmet or simulated session is currently active. This is what powers the live feed and alert banner on the dashboard page served at `/`. Two message types arrive on this channel:
+
+```json
+{ "type": "frame", "source": "helmet", "session_id": "a1b2c3d4", "image": "<base64 jpeg>", "level": "medium", "worst": { "class": "car", "side": "LEFT", "score": 0.18 } }
+{ "type": "alert", "timestamp": "2026-07-10T22:14:03Z", "class": "truck", "side": "LEFT", "score": 0.41, "level": "high", "source": "helmet" }
+```
+
+### `POST /simulate_stream`
+
+Accepts a pre recorded video clip and replays it through the exact same live pipeline a real helmet would produce, at the clip's own frame rate, broadcasting each annotated frame to `/ws/dashboard` as it goes. This exists so the full system, live feed, alerting, and history logging, can be demonstrated convincingly without needing the physical hardware connected. The request returns immediately, the streaming happens in the background.
+
+```bash
+curl -X POST https://web-production-9062c.up.railway.app/simulate_stream \
+  -F "file=@dashcam_clip.mp4"
+```
+
+### `GET /api/alerts`
+
+Returns the alert history as JSON, used by the dashboard to build its charts and history table. Accepts an optional `days` query parameter, defaulting to 30.
+
+```bash
+curl "https://web-production-9062c.up.railway.app/api/alerts?days=7"
+```
+
 ## How the AI uses this
 
 1. Call `GET /health` first to confirm the service is live and the model is loaded.
 2. For a single frame handed to an agent, call `POST /analyze` and read `threat_level` and `worst` from the response.
 3. For a clip, call `POST /analyze_video` and read `events` for every medium or high alert, or `peak_threat` for the single worst moment in the clip.
-4. `threat_level` and `level` take the values `none`, `low`, `medium`, or `high`. Treat `medium` and `high` as actionable. Treat `low` and `none` as informational only.
-5. `side` is `LEFT` or `RIGHT`, indicating which side of the frame (and therefore the rider) the threat occupies.
+4. For a live or continuous source, stream frames to `WS /ws/helmet` instead, and read alerts back off the same connection or off `WS /ws/dashboard`.
+5. `threat_level` and `level` take the values `none`, `low`, `medium`, or `high`. Treat `medium` and `high` as actionable. Treat `low` and `none` as informational only.
+6. `side` is `LEFT` or `RIGHT`, indicating which side of the frame (and therefore the rider) the threat occupies.
 
 ## Threat scoring methodology
 
@@ -157,19 +196,22 @@ After the corrections above eliminated the noise driven score spikes that the or
 
 ## System architecture & operational hardening
 
-This service is intended to be called autonomously by an agent with no human supervising the interaction or in the loop, so it is built to fail safely and predictably rather than to crash.
+This service is intended to be called autonomously by an agent, or by a piece of hardware, with no human supervising the interaction, so it is built to fail safely and predictably rather than to crash.
 
-The detection model (YOLOv8 nano) is bundled directly in the deployment rather than fetched at first request, eliminating any runtime dependency on an external download completing successfully during a cold start. Every request scoped tracker (`ThreatTracker`) is instantiated fresh per call and holds no state between requests, so concurrent requests cannot interfere with one another's track history. File uploads are validated against an explicit extension allowlist before being written to disk or passed to the model, and are capped at 30 megabytes. Video analysis is bounded at 900 processed frames (approximately 30 seconds at 30 frames per second) so a very long or malformed input cannot stall a request indefinitely; if this limit is reached, the response indicates so explicitly via a `truncated` field rather than silently returning partial results. Every error path, including corrupt uploads, unreadable video codecs, and unexpected internal exceptions, returns a structured JSON error object with an appropriate HTTP status code, so the calling agent's response parser is never handed an unparseable HTML error page.
+The detection model (YOLOv8 nano) is bundled directly in the deployment rather than fetched at first request, eliminating any runtime dependency on an external download completing successfully during a cold start. Every streaming or request scoped session gets its own model instance and its own `ThreatTracker`, so concurrent helmet connections, simulated replays, and one shot requests never share tracking state or produce cross contaminated track IDs. File uploads are validated against an explicit extension allowlist before being written to disk or passed to the model, and are capped at 30 megabytes. Video analysis is bounded at 900 processed frames (approximately 30 seconds at 30 frames per second) so a very long or malformed input cannot stall a request indefinitely; if this limit is reached, the response indicates so explicitly via a `truncated` field rather than silently returning partial results. Every error path, including corrupt uploads, unreadable video codecs, and unexpected internal exceptions, returns a structured JSON error object with an appropriate HTTP status code, so the calling agent's response parser is never handed an unparseable HTML error page.
+
+Alert history is persisted to a local SQLite database and served through `GET /api/alerts`, which is what the dashboard's charts and history table read from. The dashboard itself is one WebSocket broadcast channel, `/ws/dashboard`, fed by whichever helmet or simulated session is currently processing frames, so every connected browser sees the identical live view. The physical helmet's own alert response does not depend on the dashboard at all, the cloud sends the alert straight back down the helmet's own connection the instant it fires, so the rider's LEDs and motor react immediately regardless of whether a browser is even open.
 
 ## Limitations
 Current limitations of the API and of the product include:
 
 - `POST /analyze` operates on a single frame and therefore has no access to the temporal kinematic term; only the proximity component of the score is meaningful there.
 - The scoring model was tuned and validated against forward facing dashcam footage. It has not yet been separately validated against a true rear facing helmet camera angle, which is the deployment configuration on the physical prototype.
-- The service does not yet coordinate across multiple simultaneous AEGIS instances observing the same physical space; see below.
+- Alert history is stored in SQLite on the same filesystem as the running service, so it is not preserved across a redeploy. A managed database is the natural next step once the history needs to survive indefinitely.
+- The dashboard shows whichever session is currently streaming; it does not yet support viewing multiple riders' feeds side by side.
 
-## Future Extension
+## Future extension
 
-Every alert that AEGIS currently returns is structured, timestamped, and readable by machines. Therefore, a coordinator agent could be created, which could poll or subscribe to multiple riders' AEGIS endpoints simultaneously, and aggregate the blind spot risk data across a street or an entire city in real time. 
+Every alert AEGIS produces is structured, timestamped, and readable by machines, and the dashboard already proves that a browser client can consume that stream live. The natural extension is a coordinator agent that subscribes to multiple riders' `/ws/dashboard` style feeds simultaneously and aggregates blind spot risk data across a street, a delivery fleet, or an entire city in real time, which is exactly the kind of narrow, independently verifiable specialist agent that NANDA's Internet of Agents is designed to coordinate between.
 
 
