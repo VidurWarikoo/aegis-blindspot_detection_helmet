@@ -115,6 +115,13 @@ SYNC_CODE = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 pairing_lock = threading.Lock()
 helmet_paired = False
 
+# The rider's personal sync code, asked once right after a fresh login (see
+# /sync below) before the account can view any ride data. Unlike SYNC_CODE above
+# (a decorative, always-changing display value), this one is a fixed, real check.
+# Overridable via env var so it isn't hardcoded in a real deployment; defaults to
+# the value used during development.
+SYNC_ACCESS_CODE = os.environ.get("SYNC_ACCESS_CODE", "123456")
+
 
 def mark_helmet_paired():
     global helmet_paired
@@ -295,14 +302,17 @@ def server_error(_e):
 
 @app.before_request
 def require_login_for_pages():
-    """Gates only the two personal, ride-data pages behind the demo login. The
-    marketing/product home page is public on purpose - it's what a visitor should
-    land on with no account, and everything else (the WebSockets, /simulate_stream,
-    /api/*, /health, /analyze*) also stays open, because the physical helmet has no
-    browser and carries no session cookie - gating those too would just break the
-    real hardware."""
-    if request.endpoint in ("demo", "history") and not session.get("logged_in"):
-        return redirect(url_for("login", next=request.path))
+    """Gates only the two personal, ride-data pages behind the demo login, plus a
+    second sync-code step. The marketing/product home page is public on purpose -
+    it's what a visitor should land on with no account, and everything else (the
+    WebSockets, /simulate_stream, /api/*, /health, /analyze*) also stays open,
+    because the physical helmet has no browser and carries no session cookie -
+    gating those too would just break the real hardware."""
+    if request.endpoint in ("demo", "history"):
+        if not session.get("logged_in"):
+            return redirect(url_for("login", next=request.path))
+        if not session.get("sync_verified"):
+            return redirect(url_for("sync_code", next=request.path))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -319,9 +329,42 @@ def login():
             return render_template("login.html", error="Enter an email and password to continue.")
         session["logged_in"] = True
         session["email"] = email
+        # A fresh sign-in always has to re-clear the sync-code step below, even if
+        # this same browser verified it earlier - the flag only survives inside an
+        # active session, and logout() wipes the whole session anyway, but setting
+        # it explicitly here makes that guarantee obvious at the point of login
+        # rather than relying on it implicitly.
+        session["sync_verified"] = False
         next_path = request.args.get("next") or url_for("history")
-        return redirect(next_path)
+        return redirect(url_for("sync_code", next=next_path))
     return render_template("login.html", error=None)
+
+
+@app.route("/sync", methods=["GET", "POST"])
+def sync_code():
+    """Second step after a fresh login: the rider enters their helmet's personal
+    sync code before the account can see any ride data. This only ever gets asked
+    once per session - require_login_for_pages() only routes here when
+    sync_verified is missing, and a successful submission sets it for the rest of
+    the session, so navigating between /history and /demo afterward never asks
+    again. Logging out clears the whole session, so it's asked again on the next
+    fresh sign-in."""
+    if not session.get("logged_in"):
+        return redirect(url_for("login"))
+
+    next_path = request.args.get("next") or url_for("history")
+
+    if session.get("sync_verified"):
+        return redirect(next_path)
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        if code == SYNC_ACCESS_CODE:
+            session["sync_verified"] = True
+            return redirect(next_path)
+        return render_template("sync.html", error="Incorrect code, try again.", next=next_path)
+
+    return render_template("sync.html", error=None, next=next_path)
 
 
 @app.route("/logout", methods=["POST"])
