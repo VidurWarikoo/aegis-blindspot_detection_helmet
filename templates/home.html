@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AEGIS — AI Enhanced Guardian Intelligence System</title>
+<meta name="description" content="AEGIS is a smart helmet that detects blind-spot threats for cyclists and motorcyclists and fires an instant light and vibration alert, entirely on-device.">
+<link rel="icon" type="image/png" href="/static/logo.png">
+<link rel="prefetch" href="/history">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07070a;
+    --panel: #101013;
+    --panel-2: #16161a;
+    --border: #232328;
+    --border-strong: #35353c;
+    --text: #ece9e2;
+    --muted: #9a978f;
+    --muted-2: #666358;
+    --gold-deep: #8a6a3f;
+    --gold: #c9a26a;
+    --gold-bright: #e8c98a;
+    --gold-dim: rgba(201,162,106,0.14);
+    --steel-dim: #4a4d52;
+    --steel: #9298a0;
+    --steel-bright: #d8dce0;
+    --amber: #ffb020;
+    --red: #ff4d4d;
+  }
+  * { box-sizing: border-box; }
+  html {
+    scroll-behavior: smooth;
+    background: var(--bg);
+    scrollbar-color: #262626 var(--bg);
+    scrollbar-width: thin;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: #262626; border-radius: 10px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: #38383a; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(ellipse 1000px 520px at 12% -10%, rgba(201,162,106,0.09), transparent 60%),
+      radial-gradient(ellipse 900px 500px at 105% 6%, rgba(146,152,160,0.07), transparent 55%),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: 'Space Grotesk', -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    position: relative;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.05;
+    mix-blend-mode: overlay;
+    z-index: 0;
+  }
+  header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    z-index: 2;
+  }
+  header::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--gold), var(--steel) 60%, transparent);
+    opacity: 0.5;
+  }
+  .header-left { display: flex; align-items: center; gap: 28px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .logo-badge {
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
+    background: linear-gradient(145deg, #17140d, #0c0b08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    cursor: pointer;
+  }
+  .logo-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    flex-shrink: 0;
+    transition: transform 0.25s cubic-bezier(0.2,0.7,0.3,1);
+    transform-origin: center;
+  }
+  .logo-badge:hover { z-index: 50; }
+  .logo-badge:hover .logo-icon {
+    transform: scale(3.2);
+    filter: drop-shadow(0 12px 26px rgba(0,0,0,0.65));
+  }
+  .brand-name {
+    display: block;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 0.08em;
+    color: var(--text);
+  }
+  .tagline {
+    display: block;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 9.5px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    color: var(--muted-2);
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+  .nav-links { display: flex; gap: 4px; }
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .nav-link svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .nav-link:hover { color: var(--text); background: var(--panel); }
+  .nav-link.active { color: var(--gold-bright); background: var(--panel-2); border: 1px solid var(--border-strong); }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .logout-btn, .signin-link {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .logout-btn:hover, .signin-link:hover { background: var(--panel-2); color: var(--text); border-color: var(--border-strong); }
+  .signin-link.primary {
+    background: linear-gradient(135deg, #8a6a3f, #6e5330);
+    color: #10100d;
+    border-color: var(--gold);
+  }
+  .signin-link.primary:hover { background: linear-gradient(135deg, #a67c3d, #8a6a3f); border-color: var(--gold-bright); color: #10100d; }
+
+  main { position: relative; z-index: 1; }
+  section { padding: 64px 24px; max-width: 1200px; margin: 0 auto; }
+
+  /* ---- Hero ---- */
+  .hero {
+    padding: 88px 24px 70px;
+    text-align: center;
+    position: relative;
+  }
+  .hero-glow {
+    position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(ellipse 700px 420px at 50% 0%, rgba(201,162,106,0.16), transparent 65%);
+  }
+  .hero-wordmark { width: min(560px, 82vw); height: auto; display: block; margin: 0 auto 18px; filter: drop-shadow(0 10px 40px rgba(0,0,0,0.5)); }
+  .hero-tagline {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--gold); margin: 0 0 26px;
+  }
+  .hero-pitch {
+    max-width: 640px; margin: 0 auto 34px; font-size: 17px; line-height: 1.6; color: var(--text);
+  }
+  .hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 700;
+    letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none;
+    padding: 13px 24px; border-radius: 10px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .btn-primary { background: linear-gradient(135deg, #8a6a3f, #6e5330); color: #10100d; border: 1px solid var(--gold); }
+  .btn-primary:hover { background: linear-gradient(135deg, #a67c3d, #8a6a3f); border-color: var(--gold-bright); }
+  .btn-secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border-strong); }
+  .btn-secondary:hover { background: var(--panel-2); border-color: var(--gold); }
+
+  /* ---- Section headings ---- */
+  .section-eyebrow {
+    font-size: 11.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--gold); margin: 0 0 10px; display: flex; align-items: center; gap: 9px; justify-content: center;
+  }
+  .section-title { font-size: 26px; font-weight: 700; margin: 0 0 14px; text-align: center; letter-spacing: -0.01em; }
+  .section-sub { max-width: 620px; margin: 0 auto 42px; text-align: center; color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+
+  /* ---- Stat callouts (problem section) ---- */
+  .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; max-width: 760px; margin: 0 auto 30px; }
+  @media (max-width: 640px) { .stat-grid { grid-template-columns: 1fr; } }
+  .stat-callout {
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--gold);
+    border-radius: 12px; padding: 22px 20px; text-align: center;
+  }
+  .stat-callout .num { font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 700; color: var(--gold-bright); }
+  .stat-callout .desc { font-size: 12.5px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  .problem-copy { max-width: 700px; margin: 0 auto; font-size: 14.5px; line-height: 1.7; color: var(--muted); text-align: center; }
+
+  /* ---- Pipeline ---- */
+  .pipeline-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  @media (max-width: 900px) { .pipeline-row { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 520px) { .pipeline-row { grid-template-columns: repeat(2, 1fr); } }
+  .pipe-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 14px; text-align: center; position: relative;
+    transition: border-color 0.2s ease, transform 0.15s ease;
+  }
+  .pipe-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+  .pipe-num {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--gold-dim); color: var(--gold-bright);
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;
+  }
+  .pipe-icon { width: 26px; height: 26px; margin: 0 auto 10px; color: var(--gold); }
+  .pipe-icon svg { width: 100%; height: 100%; }
+  .pipe-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  .pipe-desc { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+
+  /* ---- Photo gallery ---- */
+  .photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .photo-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .photo-grid { grid-template-columns: 1fr; } }
+  .photo-card {
+    border-radius: 12px; overflow: hidden; background: var(--panel);
+    border: 1px solid var(--border);
+  }
+  .photo-frame {
+    aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center;
+    background:
+      repeating-linear-gradient(45deg, var(--panel-2), var(--panel-2) 10px, var(--panel) 10px, var(--panel) 20px);
+    border-bottom: 1px dashed var(--border-strong);
+    color: var(--muted-2); font-size: 11.5px; text-align: center; padding: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .photo-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .photo-caption { padding: 10px 12px; font-size: 12px; font-weight: 600; color: var(--text); }
+
+  /* ---- Features ---- */
+  .feature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .feature-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .feature-grid { grid-template-columns: 1fr; } }
+  .feature-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px;
+    transition: border-color 0.2s ease;
+  }
+  .feature-card:hover { border-color: var(--border-strong); }
+  .feature-icon {
+    width: 34px; height: 34px; border-radius: 9px; background: var(--gold-dim);
+    display: flex; align-items: center; justify-content: center; margin-bottom: 14px;
+  }
+  .feature-icon svg { width: 18px; height: 18px; color: var(--gold); }
+  .feature-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .feature-desc { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+
+  /* ---- Bottom CTA ---- */
+  .bottom-cta {
+    text-align: center; padding: 60px 24px 80px;
+  }
+  .bottom-cta h2 { font-size: 22px; margin: 0 0 10px; }
+  .bottom-cta p { color: var(--muted); font-size: 14px; margin: 0 0 26px; }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 30px 24px; text-align: center;
+  }
+  .footer-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 10px; }
+  .footer-brand img { width: 28px; height: 28px; object-fit: contain; }
+  .footer-brand span { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; }
+  footer .credit { font-size: 11.5px; color: var(--muted-2); }
+  footer .foot-links { display: flex; gap: 18px; justify-content: center; margin-bottom: 14px; }
+  footer .foot-links a { color: var(--muted); text-decoration: none; font-size: 12.5px; }
+  footer .foot-links a:hover { color: var(--gold-bright); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <a href="/" class="brand">
+      <div class="logo-badge">
+        <img class="logo-icon" src="/static/logo.png" alt="Aegis">
+      </div>
+      <div>
+        <span class="brand-name">AEGIS</span>
+        <span class="tagline">AI ENHANCED GUARDIAN SYSTEM</span>
+      </div>
+    </a>
+    <nav class="nav-links">
+      <a href="/" class="nav-link active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h3.5v-5.5h3V20H17a1 1 0 0 0 1-1v-9"/></svg>
+        Home
+      </a>
+      <a href="/history" class="nav-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12.5" r="8.5"/><path d="M12 8v4.5l3 2"/></svg>
+        History
+      </a>
+      <a href="/demo" class="nav-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.4h6.8L16.4 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.2"/></svg>
+        Demo
+      </a>
+    </nav>
+  </div>
+  <div class="header-right">
+    {% if user_email %}
+      <form method="POST" action="/logout">
+        <button type="submit" class="logout-btn" title="{{ user_email }}">Sign out</button>
+      </form>
+    {% else %}
+      <a href="/login" class="signin-link primary">Sign in</a>
+    {% endif %}
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= HERO ================= -->
+  <section class="hero">
+    <div class="hero-glow"></div>
+    <img class="hero-wordmark" src="/static/wordmark.png" alt="AEGIS">
+    <p class="hero-tagline">AI Enhanced Guardian Intelligence System</p>
+    <p class="hero-pitch">A smart helmet that detects vehicles approaching in a rider's blind spot and fires an instant light and vibration alert — scored and triggered entirely on the helmet, with or without a network connection.</p>
+    <div class="hero-cta">
+      <a href="/history" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12.5" r="8.5"/><path d="M12 8v4.5l3 2"/></svg>
+        View ride history
+      </a>
+      <a href="/demo" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.4h6.8L16.4 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.2"/></svg>
+        Try the detection demo
+      </a>
+    </div>
+  </section>
+
+  <!-- ================= THE PROBLEM ================= -->
+  <section id="problem">
+    <p class="section-eyebrow">The problem</p>
+    <h2 class="section-title">Riders can't reliably see what's behind them</h2>
+    <div class="stat-grid">
+      <div class="stat-callout">
+        <div class="num">+13%</div>
+        <div class="desc">rise in US bicyclist deaths, 2021 → 2022 (976 → 1,105)</div>
+      </div>
+      <div class="stat-callout">
+        <div class="num">48.3%</div>
+        <div class="desc">of all road fatalities in India (2024) were two-wheelers</div>
+      </div>
+    </div>
+    <p class="problem-copy">Mirrors leave large blind spots, and turning to check traffic costs balance and reaction time. Existing blind-spot add-ons mostly offer raw proximity alerts, without telling a genuinely closing threat apart from harmless passing traffic — and without working offline.</p>
+  </section>
+
+  <!-- ================= HOW IT WORKS ================= -->
+  <section id="how-it-works">
+    <p class="section-eyebrow">How it works</p>
+    <h2 class="section-title">Six steps, entirely on the helmet</h2>
+    <p class="section-sub">No cloud round-trip sits between a threat and the rider's warning — detection, scoring, and alerting all happen locally, in real time.</p>
+    <div class="pipeline-row">
+      <div class="pipe-card">
+        <div class="pipe-num">1</div>
+        <div class="pipe-title">Capture</div>
+        <div class="pipe-desc">Rear camera streams footage of the road behind the rider.</div>
+      </div>
+      <div class="pipe-card">
+        <div class="pipe-num">2</div>
+        <div class="pipe-title">Detect</div>
+        <div class="pipe-desc">Tracks each vehicle, cyclist, or pedestrian frame-to-frame.</div>
+      </div>
+      <div class="pipe-card">
+        <div class="pipe-num">3</div>
+        <div class="pipe-title">Score</div>
+        <div class="pipe-desc">Measures proximity and how fast each object is closing in.</div>
+      </div>
+      <div class="pipe-card">
+        <div class="pipe-num">4</div>
+        <div class="pipe-title">Classify</div>
+        <div class="pipe-desc">Flags the single genuine threat, filtering out passing traffic.</div>
+      </div>
+      <div class="pipe-card">
+        <div class="pipe-num">5</div>
+        <div class="pipe-title">Alert</div>
+        <div class="pipe-desc">Light + vibration fire instantly, no network round-trip.</div>
+      </div>
+      <div class="pipe-card">
+        <div class="pipe-num">6</div>
+        <div class="pipe-title">Archive</div>
+        <div class="pipe-desc">Alert + clip sync here whenever a connection is available.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= HARDWARE / PHOTOS ================= -->
+  <section id="hardware">
+    <p class="section-eyebrow">The hardware</p>
+    <h2 class="section-title">Inside the AEGIS helmet</h2>
+    <p class="section-sub">Photos from the build — swap the placeholders below for the real thing whenever you're ready.</p>
+    <div class="photo-grid">
+      <div class="photo-card">
+        <div class="photo-frame">[ photo ]<br>helmet prototype</div>
+        <div class="photo-caption">Helmet prototype</div>
+      </div>
+      <div class="photo-card">
+        <div class="photo-frame">[ photo ]<br>internals / wiring</div>
+        <div class="photo-caption">Internals &amp; wiring</div>
+      </div>
+      <div class="photo-card">
+        <div class="photo-frame">[ photo ]<br>LED + vibration alert</div>
+        <div class="photo-caption">LED + vibration alert</div>
+      </div>
+      <div class="photo-card">
+        <div class="photo-frame">[ photo ]<br>rear camera mount</div>
+        <div class="photo-caption">Rear camera mount</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FEATURES ================= -->
+  <section id="features">
+    <p class="section-eyebrow">Why AEGIS</p>
+    <h2 class="section-title">Built to work when it matters</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6.5v5c0 5 3.4 8.6 8 9.5 4.6-.9 8-4.5 8-9.5v-5L12 3Z"/></svg></div>
+        <div class="feature-title">Fully offline safety</div>
+        <div class="feature-desc">Detection, scoring, and alerting all run on the helmet — no network needed to keep the rider warned.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 16.5h.01"/><path d="M10.3 3.9 2.7 17a1.8 1.8 0 0 0 1.5 2.7h15.6a1.8 1.8 0 0 0 1.5-2.7L13.7 3.9a1.8 1.8 0 0 0-3.4 0Z"/></svg></div>
+        <div class="feature-title">Real threats only</div>
+        <div class="feature-desc">A class-weighted, convergence-aware algorithm filters out passing and oncoming traffic before it ever reaches the rider.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9.5 21 7v10l-4-2.5"/></svg></div>
+        <div class="feature-title">Near-miss archive</div>
+        <div class="feature-desc">Alerts and short clips sync to this site whenever a connection is available, for review after the ride.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/><path d="M5.5 17.5 9 8h4l4.5 9.5M9 8l-2-3.5H4"/></svg></div>
+        <div class="feature-title">Built to scale</div>
+        <div class="feature-desc">Proven as a cycling proof-of-concept, with a path to motorcycle helmet applications.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= BOTTOM CTA ================= -->
+  <section class="bottom-cta">
+    <h2>See it in action</h2>
+    <p>Browse real alert history, or run a clip through the detection pipeline yourself.</p>
+    <div class="hero-cta">
+      <a href="/history" class="btn btn-primary">View ride history</a>
+      <a href="/demo" class="btn btn-secondary">Try the demo</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="footer-brand">
+    <img src="/static/logo.png" alt="Aegis">
+    <span>AEGIS</span>
+  </div>
+  <div class="foot-links">
+    <a href="/">Home</a>
+    <a href="/history">History</a>
+    <a href="/demo">Demo</a>
+  </div>
+  <p class="credit">AI Enhanced Guardian Intelligence System — MIT AI Fellowship by TIS</p>
+</footer>
+
+</body>
+</html>

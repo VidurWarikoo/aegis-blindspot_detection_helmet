@@ -103,13 +103,13 @@
 </head>
 <body>
   <div class="card">
-    <div class="brand">
+    <a href="/" class="brand" style="text-decoration:none;color:inherit;">
       <div class="logo-badge"><img src="/static/logo.png" alt="Aegis"></div>
       <div>
         <div class="brand-name" style="text-align:center;">AEGIS</div>
         <div class="tagline">AI Enhanced Guardian System</div>
       </div>
-    </div>
+    </a>
     <h1>Sign in</h1>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     <form method="POST">

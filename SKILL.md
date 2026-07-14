@@ -2,11 +2,13 @@
 
 **AEGIS: AI Enhanced Guardian Intelligence System.** Our name stems from the Greek myth of Aegis, which was the impenetrable shield or breastplate used by Zeus and Athena. The name Aegis symbolizes invincible protection and divine authority, and is a perfect proxy for our project. In this instance, Aegis has been cleverly made into an acronym, which stands for the AI Enhanced Guardian Intelligence System. This is a hosted computer vision service that performs real time blind spot threat assessment for cyclists and motorcyclists.
 
-AEGIS is built as a distributed system, not a single embedded gadget. The physical helmet is a thin edge sensor that only captures and streams frames, it runs no detection of its own. Every frame is sent to this hosted service, which is where the actual intelligence lives: the YOLOv8 detector, the full tracking and threat scoring pipeline described below, and the decision of whether something is genuinely dangerous. When the answer is yes, two things happen at once. A message is sent back to the physical helmet so it can fire its own LEDs and vibration motor immediately, and the same alert is pushed live to a connected web dashboard, hosted at this same base URL, which shows the annotated video feed in real time and keeps a running history of every unsafe moment for later review and comparison.
+AEGIS runs its detection, threat scoring, and physical alerting entirely on the helmet itself (a Raspberry Pi 4 with a rear-facing camera). The YOLOv8 detector and the full tracking and threat scoring pipeline described below execute locally on the Pi, and the LEDs and vibration motor fire the instant a frame is scored, medium or high, before any network request is ever made. This is a deliberate safety decision: a rider's warning must never depend on wifi coverage or a cloud service being reachable.
+
+This hosted service is not in that safety-critical path at all. Its entire job is to be a searchable, reviewable archive of what happened on a ride. The Pi durably queues every medium/high alert (and, for high severity events, the near-miss video clip it already recorded and encoded on its own) and uploads them here in the background whenever a connection is available. A ride with no signal for its entire duration still gets full local warnings, the data just uploads later once the Pi is back near a network.
 
 **Base URL:** `https://web-production-9062c.up.railway.app`
 
-**Live dashboard:** open the base URL directly in a browser to see the operator view: a live annotated feed, an alert banner with sound for medium and high threats, a button to replay a pre recorded clip through the full pipeline without needing the physical helmet connected, and charts built from the alert history at `/history`. Both pages sit behind a lightweight sign-in; none of the API or WebSocket endpoints below are gated by it.
+**Web dashboard:** the base URL now serves a public product page (what the helmet is, how the pipeline works, build photos) rather than redirecting straight into the app. `/history` is the alert log, charts, and near-miss clip viewer built from whatever the helmet has uploaded so far - there is no live feed to watch, the helmet already handled the warning locally by the time anything reaches this service. `/demo` is a separate, optional page that replays an uploaded clip through the identical scoring pipeline via `POST /simulate_stream`, useful for showing the algorithm working without needing the physical helmet in the room; it is not connected to a real rider. `/history` and `/demo` sit behind a lightweight sign-in; the home page does not, and none of the API or WebSocket endpoints below are gated by it.
 
 ## The problem this addresses
 
@@ -106,49 +108,32 @@ Response:
 }
 ```
 
-### `WS /ws/helmet`
+### `POST /api/ingest` — how a real helmet actually gets data here now
 
-The physical (or simulated) helmet connects here and sends a continuous sequence of binary WebSocket messages, each one a JPEG encoded frame. There is no request or response in the usual sense, this is a persistent streaming connection. Every frame is run through detection and scoring, using a tracker and model instance dedicated to this connection so concurrent sessions never share tracking state. Whenever a frame produces a medium or high alert, a short JSON message is sent back down this same connection so the helmet can act immediately:
-
-```json
-{ "type": "alert", "level": "high", "side": "LEFT" }
-```
-
-### `WS /ws/dashboard`
-
-A browser connects here to receive a live push of every processed frame and every alert, from whichever helmet or simulated session is currently active. This is what powers the live feed and alert banner on the dashboard page served at `/`. Two message types arrive on this channel:
-
-```json
-{ "type": "frame", "source": "helmet", "session_id": "a1b2c3d4", "image": "<base64 jpeg>", "level": "medium",
-  "worst": { "track_id": 3, "cls_id": 2, "class": "car", "score": 0.18, "side": "LEFT", "x1": 140, "y1": 210, "x2": 420, "y2": 480 } }
-```
-
-```json
-{ "type": "alert", "timestamp": "2026-07-10T22:14:03Z", "class": "truck", "side": "LEFT", "score": 0.41, "level": "high", "source": "helmet" }
-```
-
-`worst` on a `frame` message is `null` whenever nothing is currently detected in that frame.
-
-### `POST /simulate_stream`
-
-Accepts a pre recorded video clip and replays it through the exact same live pipeline a real helmet would produce, at the clip's own frame rate, broadcasting each annotated frame to `/ws/dashboard` as it goes. This exists so the full system, live feed, alerting, and history logging, can be demonstrated convincingly without needing the physical hardware connected. The request returns immediately while the streaming happens in the background.
+The primary way real data reaches this service. The helmet (see `helmet_local.py`) already ran detection, scored the threat, and fired its own LEDs/motor entirely offline before this request is ever sent, this call exists purely to make that event show up on `/history` later. Uploads are asynchronous and best-effort: the helmet durably queues every medium/high alert locally the moment it fires and retries this call in the background whenever a connection exists, so it can arrive seconds or hours after the real event.
 
 ```bash
-curl -X POST https://web-production-9062c.up.railway.app/simulate_stream \
-  -F "file=@dashcam_clip.mp4"
+curl -X POST https://web-production-9062c.up.railway.app/api/ingest \
+  -F "timestamp=2026-07-12T14:03:11.204000Z" -F "class=truck" -F "side=LEFT" \
+  -F "score=0.412" -F "level=high" -F "source=helmet" \
+  -F "clip=@nearmiss_2026-07-12T14-03-11.204000Z_truck_LEFT.mp4"
 ```
 
 Response:
 
 ```json
-{ "status": "started", "message": "simulation is now streaming to the dashboard" }
+{ "status": "ok", "logged": true, "clip_saved": true }
 ```
 
-The frames and alerts themselves never arrive in this response, they only ever arrive over `WS /ws/dashboard` while the simulation plays out.
+`timestamp`, `class`, `side`, `score`, and `level` are required on every call. `source` defaults to `"helmet"` if omitted. The `clip` file field is optional and should only be attached for `level: "high"` events where the helmet already recorded and encoded a near-miss clip locally, medium alerts are metadata-only.
+
+### `WS /ws/helmet`, `WS /ws/dashboard`, `POST /simulate_stream` — legacy live path, demo use only
+
+These three still exist and still work exactly as before, but they are no longer how a real helmet reports anything, the helmet does its own detection locally now and never opens a live connection to this service at all. They're kept around purely to power the optional `/demo` page: `POST /simulate_stream` replays an uploaded clip through the same scoring pipeline at the clip's frame rate and broadcasts annotated frames over `WS /ws/dashboard`, so the detection algorithm can be demoed to someone without the physical helmet in the room. `WS /ws/helmet` (a live binary JPEG stream, alerts sent back as `{ "type": "alert", "level": "high", "side": "LEFT" }`) still works if you want to point a second camera at it for a demo, but no production helmet uses it. Treat these as a demo utility, not part of the real data path, use `POST /api/ingest` and `GET /api/alerts` for anything about actual rides.
 
 ### `GET /api/alerts`
 
-Returns the alert history as JSON, used by the dashboard to build its charts and history table. Accepts an optional `days` query parameter, defaulting to 30, and an optional `limit`, defaulting to 500.
+Returns the alert history as JSON, used by `/history` to build its charts and table. This now reflects real rides uploaded via `POST /api/ingest`, alongside anything generated through the `/demo` page. Accepts an optional `days` query parameter, defaulting to 30, and an optional `limit`, defaulting to 500.
 
 ```bash
 curl "https://web-production-9062c.up.railway.app/api/alerts?days=7&limit=3"
@@ -163,7 +148,19 @@ Response:
 ]
 ```
 
-Newest first. `source` is `"helmet"`, `"simulated"`, or `"demo"`.
+Newest first. `source` is `"helmet"` (a real ride, uploaded via `/api/ingest`), `"simulated"` (from the `/demo` page), or `"demo"` (seeded placeholder data).
+
+### `GET /api/clips` and `GET /api/clips/<filename>`
+
+`GET /api/clips` returns up to the 3 most recent near-miss clip filenames (newest first), whether they were recorded locally on the helmet and uploaded via `/api/ingest`, or captured during a `/demo` session. `GET /api/clips/<filename>` serves the actual mp4 file. Both power the "Recent near misses" panel on `/history`.
+
+```bash
+curl https://web-production-9062c.up.railway.app/api/clips
+```
+
+```json
+["nearmiss_2026-07-12T14-03-11.204000Z_truck_LEFT.mp4"]
+```
 
 ### Demo and maintenance endpoints
 
@@ -191,12 +188,12 @@ curl -X POST https://web-production-9062c.up.railway.app/api/clear_demo_data
 
 1. Call `GET /health` first to confirm the service is live and the model is loaded. If `model_loaded` is not `true`, stop, the service isn't ready yet.
 2. If you want a machine readable map of the whole API before doing anything else, call `GET /api/info` and read `endpoints`.
-3. To assess a single frame handed to you, call `POST /analyze` and read `threat_level` off the response. If it's `medium` or `high`, `worst` tells you exactly which object and which `side`, ignore `detections` unless you need every object in frame, not just the worst one.
-4. To assess a pre-recorded clip end to end, call `POST /analyze_video` and read `events` for every medium or high alert that fired during the clip, or just `peak_threat` if you only care about the single worst moment.
-5. To demo or replay a clip through the live pipeline instead of analyzing it offline, call `POST /simulate_stream`. Its response only confirms the stream started (`{"status": "started", ...}`), the actual frames and alerts show up asynchronously on `WS /ws/dashboard`, not in this response.
-6. For a live, continuous source (a real or simulated helmet), open a WebSocket to `WS /ws/helmet` and send binary JPEG frames continuously. Listen on that same connection for `{"type": "alert", ...}` messages and act on `level` and `side` the instant one arrives.
-7. To watch or relay that same live session visually, open a WebSocket to `WS /ws/dashboard` instead. Read `type: "frame"` messages for the annotated image and current `worst` object, and `type: "alert"` messages for discrete threat events worth logging or narrating.
-8. To pull historical alert data for analysis or reporting, call `GET /api/alerts`, optionally with `days` and `limit`, and read the returned array directly, every entry already has `timestamp`, `class`, `side`, `score`, `level`, and `source`.
+3. To review what a real helmet has actually detected on rides, call `GET /api/alerts`, optionally with `days` and `limit`, and read the returned array, every entry has `timestamp`, `class`, `side`, `score`, `level`, and `source`. This is the primary way to answer questions about real activity, the helmet already made every decision locally, this endpoint is just the log of what happened.
+4. To see or attach a near-miss clip for a specific high-severity event, call `GET /api/clips` for the up-to-3 most recent filenames, then `GET /api/clips/<filename>` for the actual mp4.
+5. If you are the helmet reporting a real detection (or building something that stands in for one), call `POST /api/ingest` with the alert's `timestamp`, `class`, `side`, `score`, `level`, and for high severity events, the recorded clip file. Nothing about the alerting itself depends on this call succeeding, it exists purely to make the event reviewable later.
+6. To assess a single frame handed to you directly (not from the helmet), call `POST /analyze` and read `threat_level` off the response. If it's `medium` or `high`, `worst` tells you exactly which object and which `side`.
+7. To assess a pre-recorded clip end to end, call `POST /analyze_video` and read `events` for every medium or high alert that fired during the clip, or just `peak_threat` if you only care about the single worst moment.
+8. To demo the live pipeline visually without a real helmet present, call `POST /simulate_stream` and watch `/demo` in a browser, or consume `WS /ws/dashboard` directly. This is a demo utility only, real rides never go through it.
 9. Across every endpoint, `threat_level` / `level` takes the values `none`, `low`, `medium`, or `high`. Treat `medium` and `high` as actionable, `low` and `none` as informational only.
 10. Across every endpoint, `side` is `LEFT` or `RIGHT`, indicating which side of the frame, and therefore the rider, the threat occupies.
 
@@ -267,11 +264,13 @@ After the corrections above eliminated the noise driven score spikes that the or
 
 ## System architecture & operational hardening
 
-This service is intended to be called autonomously by an agent, or by a piece of hardware, with no human supervising the interaction, so it is built to fail safely and predictably rather than to crash.
+**The safety-critical path never touches this service.** Detection, tracking, threat scoring, and physical alerting (LEDs + vibration motor) all run on the Raspberry Pi itself, in `helmet_local.py`, using the identical `threat_engine.py` scoring module documented above (shared between the Pi and this repo, not a separate copy that could drift). A rider gets their warning even with zero network connectivity for the entire ride. This service's only job is archival: it receives whatever the Pi durably queued and eventually uploaded via `POST /api/ingest`, and makes it browsable on `/history`. If this entire Railway deployment were down, the helmet would keep working exactly the same, it just wouldn't have anywhere to upload to until the deployment came back.
 
-The detection model (YOLOv8 nano) is bundled directly in the deployment rather than fetched at first request, eliminating any runtime dependency on an external download completing successfully during a cold start. Every streaming or request scoped session gets its own model instance and its own `ThreatTracker`, so concurrent helmet connections, simulated replays, and one shot requests never share tracking state or produce cross contaminated track IDs. File uploads are validated against an explicit extension allowlist before being written to disk or passed to the model, and are capped at 30 megabytes. Video analysis is bounded at 900 processed frames (approximately 30 seconds at 30 frames per second) so a very long or malformed input cannot stall a request indefinitely; if this limit is reached, the response indicates so explicitly via a `truncated` field rather than silently returning partial results. Every error path, including corrupt uploads, unreadable video codecs, and unexpected internal exceptions, returns a structured JSON error object with an appropriate HTTP status code, so the calling agent's response parser is never handed an unparseable HTML error page.
+On the Pi side, every medium/high alert is written to a local SQLite outbox (`outbox.py`) the instant it fires, before any upload is even attempted, so a crash or a dead wifi link can never silently lose an event, it just waits for the next retry. A background thread flushes that outbox to `POST /api/ingest` on a fixed interval whenever a connection exists; rows are only deleted once the server confirms a 2xx response. For high severity events, `near_miss.py` (also shared, unmodified between the local and cloud contexts) buffers a rolling window of recent frames and, on trigger, records roughly two seconds before and two seconds after the event into an mp4, capped locally at the 3 most recent clips so the Pi's SD card never fills up regardless of how long uploads are delayed.
 
-Alert history is persisted to a SQLite database on a mounted Railway Volume, so it survives redeploys rather than living on the container's own ephemeral disk, and is served through `GET /api/alerts`, which is what the dashboard's charts and history table read from, and what any agent should call for historical analysis. The dashboard itself is one WebSocket broadcast channel, `/ws/dashboard`, fed by whichever helmet or simulated session is currently processing frames, so every connected browser sees the identical live view. The physical helmet's own alert response does not depend on the dashboard at all, the cloud sends the alert straight back down the helmet's own connection the instant it fires, so the rider's LEDs and motor react immediately regardless of whether a browser is even open. Alerts are deduplicated per tracked object with a three second cooldown before writing a new history row, so a single sustained threat does not flood the database with near identical entries.
+This service itself is still intended to be called autonomously, so it remains built to fail safely and predictably. The detection model (YOLOv8 nano) is bundled directly in the deployment rather than fetched at first request. Every request-scoped or streaming session (used only by `POST /analyze`, `POST /analyze_video`, and the `/demo` page's legacy live path) gets its own model instance and its own `ThreatTracker`, so concurrent sessions never share tracking state. File uploads are validated against an explicit extension allowlist and capped at 30 megabytes. Video analysis is bounded at 900 processed frames; if that limit is hit, the response says so explicitly via `truncated` rather than silently returning partial results. Every error path returns a structured JSON error object with an appropriate HTTP status code.
+
+Alert history is persisted to a SQLite database on a mounted Railway Volume, so it survives redeploys rather than living on the container's own ephemeral disk, and is served through `GET /api/alerts`. Alerts are deduplicated per tracked object with a three second cooldown before a new history row is written (this dedup runs identically on the Pi now, before an event is even queued for upload), so a single sustained threat does not flood the archive with near identical entries.
 
 ## Limitations
 
@@ -279,8 +278,10 @@ Current limitations of the API and of the product include:
 
 - `POST /analyze` operates on a single frame and therefore has no access to the temporal kinematic term; only the proximity component of the score is meaningful there.
 - The scoring model was tuned and validated against forward facing dashcam footage. It has not yet been separately validated against a true rear facing helmet camera angle, which is the deployment configuration on the physical prototype.
-- The dashboard shows whichever session is currently streaming; it does not yet support viewing multiple riders' feeds side by side.
+- Uploads via `POST /api/ingest` are best-effort and asynchronous, there is no guaranteed upper bound on how long a real alert takes to become visible on `/history` if the helmet has no connectivity for an extended period; it will eventually appear once the Pi reconnects, but nothing currently surfaces "N events still pending upload" anywhere.
+- There is no live view of an in-progress ride. `/demo` shows the pipeline running on an uploaded clip, not a real-time feed from the helmet, by design, since the helmet no longer maintains a live connection to this service at all.
+- Running YOLOv8 nano plus tracking locally on a Raspberry Pi 4's CPU is meaningfully slower than the same workload on a cloud instance; achievable on-device frame rate has not yet been benchmarked against the frame rate the scoring model was validated at.
 
 ## Future extension
 
-Every alert AEGIS produces is structured, timestamped, and readable by machines, and the dashboard already proves that a browser client can consume that stream live. The natural extension is a coordinator agent that subscribes to multiple riders' `/ws/dashboard` style feeds simultaneously and aggregates blind spot risk data across a street, a delivery fleet, or an entire city in real time, which is exactly the kind of narrow, independently verifiable specialist agent that NANDA's Internet of Agents is designed to coordinate between.
+Every alert AEGIS produces is structured, timestamped, and readable by machines, whether it originated from a real helmet's local detection or the `/demo` page's live pipeline. The natural extension is a coordinator agent that polls `GET /api/alerts` across multiple riders' independent helmets and aggregates blind spot risk data across a street, a delivery fleet, or an entire city, which is exactly the kind of narrow, independently verifiable specialist agent that NANDA's Internet of Agents is designed to coordinate between. Because each helmet is already fully autonomous and offline-capable, this kind of fleet-level aggregation could layer on top of the existing archive without ever touching the safety-critical path on any individual rider's device.

@@ -364,13 +364,17 @@
       </div>
     </div>
     <nav class="nav-links">
-      <a href="/" class="nav-link active">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.4h6.8L16.4 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.2"/></svg>
-        Live feed
+      <a href="/" class="nav-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h3.5v-5.5h3V20H17a1 1 0 0 0 1-1v-9"/></svg>
+        Home
       </a>
       <a href="/history" class="nav-link">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12.5" r="8.5"/><path d="M12 8v4.5l3 2"/></svg>
         History
+      </a>
+      <a href="/demo" class="nav-link active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.4h6.8L16.4 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.2"/></svg>
+        Demo
       </a>
     </nav>
   </div>
@@ -390,7 +394,7 @@
     <div class="panel">
       <h2>
         <span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h1.6l1-1.4h6.8L16.4 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"/><circle cx="12" cy="13" r="3.2"/></svg></span>
-        Live feed
+        Detection demo
       </h2>
       <div id="feedWrap">
         <div class="frame-corner tl"></div>
@@ -403,7 +407,7 @@
           <div class="ring r3"></div>
           <div class="sweep"></div>
         </div>
-        <span class="placeholder" id="feedPlaceholder">STANDBY // waiting for a helmet or simulated stream</span>
+        <span class="placeholder" id="feedPlaceholder">STANDBY // upload a clip to replay it through the scoring pipeline</span>
         <img id="liveFeed" style="display:none">
       </div>
       <div id="alertBanner"></div>
@@ -411,18 +415,18 @@
         <input type="file" id="simFile" accept="video/*">
         <button id="simBtn">Simulate helmet</button>
       </div>
-      <p class="hint">Broadcasts live to every connected dashboard viewer. Click once to arm, click again to confirm.</p>
+      <p class="hint">Demo only, not connected to a live rider — the helmet now does its own detection and alerting offline (see /history for real ride data). This replays a clip through the identical scoring pipeline so the algorithm can be shown without the physical hardware in the room. Click once to arm, click again to confirm.</p>
     </div>
 
     <div class="side-stack">
       <div class="panel">
         <h2>
           <span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="9" width="16" height="11" rx="2"/><path d="M8 9V6.5a4 4 0 0 1 8 0V9"/></svg></span>
-          Pair your helmet
+          Helmet sync
         </h2>
         <div class="pairing-code" id="pairingCode">------</div>
         <div class="pairing-status" id="pairingStatus"><span class="dot"></span><span id="pairingStatusText">Waiting for a helmet...</span></div>
-        <p class="hint" style="margin-top:10px;">Enter this code in the helmet's companion setup to link it to your account.</p>
+        <p class="hint" style="margin-top:10px;">Flips to synced once your helmet has uploaded at least one alert or near-miss clip from a ride.</p>
       </div>
       <div class="panel">
         <h2>

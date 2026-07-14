@@ -1,20 +1,27 @@
 """
-Aegis, hosted computer vision service for real time blind spot threat assessment.
+Aegis, hosted archive and review service for a helmet that detects and alerts fully
+on its own.
 
-This is the cloud brain in a distributed architecture: the physical helmet is now a
-thin edge sensor (see helmet_client.py) that only captures and streams frames, all
-detection, tracking, and threat scoring described in threat_engine.py runs here.
+This used to be the cloud brain in a distributed architecture: the helmet streamed
+raw frames here and waited for a verdict before it could warn the rider. That put a
+safety-critical alert behind a network round trip, which is no longer acceptable, so
+detection, tracking, and threat scoring (threat_engine.py) now run locally on the Pi
+(see helmet_local.py), and the LEDs/motor fire before any request to this service is
+even made. This service's job is now purely archival: it receives whatever the Pi
+durably queued and uploaded via POST /api/ingest, and makes it browsable at /history.
 
-Two ways data reaches this service:
-  1. Live stream from a real helmet, over the WebSocket at /ws/helmet.
-  2. A pre recorded clip replayed in real time via POST /simulate_stream, for demoing
-     the full pipeline without needing the physical hardware connected.
+Two things still reach this service:
+  1. Async, best-effort uploads from a real helmet, via POST /api/ingest, whenever a
+     connection happens to be available. Never on the safety-critical path.
+  2. The legacy live path (WS /ws/helmet, WS /ws/dashboard, POST /simulate_stream),
+     kept only to power the optional /demo page so the detection pipeline can be
+     shown running without the physical helmet in the room. No real ride ever goes
+     through this path anymore.
 
-Both paths run frames through the same tracker, annotate them, and broadcast the
-result to every browser connected at /ws/dashboard, which is what the dashboard page
-served at / displays live. Any alert at medium or high severity is logged to a local
-SQLite database and is queryable at GET /api/alerts for the dashboard's history and
-charts view.
+Any alert at medium or high severity is logged to a local SQLite database and is
+queryable at GET /api/alerts for the /history page's charts and table. HIGH events
+carry a near-miss clip, recorded and encoded entirely on the Pi, browsable via
+GET /api/clips and GET /api/clips/<filename>.
 
 The original request/response endpoints from the first version of this service are
 kept as is, since they are documented in SKILL.md as the interface an agent can call
@@ -288,11 +295,13 @@ def server_error(_e):
 
 @app.before_request
 def require_login_for_pages():
-    """Gates only the two browser-facing pages behind the demo login. Everything
-    else (the WebSockets, /simulate_stream, /api/*, /health, /analyze*) stays open,
-    because the physical helmet has no browser and carries no session cookie -
-    gating those too would just break the real hardware."""
-    if request.endpoint in ("dashboard", "history") and not session.get("logged_in"):
+    """Gates only the two personal, ride-data pages behind the demo login. The
+    marketing/product home page is public on purpose - it's what a visitor should
+    land on with no account, and everything else (the WebSockets, /simulate_stream,
+    /api/*, /health, /analyze*) also stays open, because the physical helmet has no
+    browser and carries no session cookie - gating those too would just break the
+    real hardware."""
+    if request.endpoint in ("demo", "history") and not session.get("logged_in"):
         return redirect(url_for("login", next=request.path))
 
 
@@ -300,8 +309,8 @@ def require_login_for_pages():
 def login():
     """Demo-flow login: this is not real account security, there is no user store
     and no password check, any non-empty email/password is accepted. It exists so
-    the product can be demoed with a believable 'sign in, then pair your helmet'
-    flow. Every logged-in browser still sees the exact same shared live feed and
+    the product can be demoed with a believable 'sign in, then check your ride
+    history' flow. Every logged-in browser still sees the exact same shared
     history underneath."""
     if request.method == "POST":
         email = request.form.get("email", "").strip()
@@ -310,7 +319,7 @@ def login():
             return render_template("login.html", error="Enter an email and password to continue.")
         session["logged_in"] = True
         session["email"] = email
-        next_path = request.args.get("next") or url_for("dashboard")
+        next_path = request.args.get("next") or url_for("history")
         return redirect(next_path)
     return render_template("login.html", error=None)
 
@@ -338,8 +347,62 @@ def api_clip_file(filename):
     return send_from_directory(near_miss.CLIPS_DIR, filename)
 
 
+@app.route("/api/ingest", methods=["POST"])
+def api_ingest():
+    """
+    Receives one alert from a helmet that is doing its own detection and scoring
+    locally (see helmet_local.py) and firing its LEDs/motor before this request is
+    even sent. This endpoint is never on the safety-critical path, it only exists so
+    the alert (and, for HIGH events, the near-miss clip the Pi already recorded and
+    encoded on its own) becomes browsable on the /history page. Uploads are async and
+    best-effort from the Pi's side (see outbox.py), so this can arrive anywhere from
+    seconds to hours after the alert actually fired.
+
+    Expects multipart/form-data with fields timestamp, class, side, score, level, and
+    optionally source (defaults to "helmet"), plus an optional file field "clip" with
+    an already-encoded mp4 for HIGH severity events.
+    """
+    required = ("timestamp", "class", "side", "score", "level")
+    missing = [f for f in required if f not in request.form]
+    if missing:
+        return _error(f"missing required field(s): {', '.join(missing)}")
+
+    try:
+        score = float(request.form["score"])
+    except ValueError:
+        return _error("score must be a number")
+
+    alert = {
+        "timestamp": request.form["timestamp"],
+        "class": request.form["class"],
+        "side": request.form["side"],
+        "score": score,
+        "level": request.form["level"],
+        "source": request.form.get("source", "helmet"),
+    }
+    log_alert(alert)
+    mark_helmet_paired()
+
+    clip_saved = False
+    if "clip" in request.files and request.files["clip"].filename:
+        near_miss.save_incoming_clip(request.files["clip"], alert)
+        clip_saved = True
+
+    return jsonify({"status": "ok", "logged": True, "clip_saved": clip_saved})
+
+
 @app.route("/", methods=["GET"])
-def dashboard():
+def index():
+    # Public product/marketing page - what the helmet is, how it works, and photos
+    # of the build. Deliberately not gated behind login, unlike /history and /demo,
+    # since this is the page a visitor with no account should land on. The old
+    # behavior of redirecting straight to /history moved to the "View ride history"
+    # button on this page instead.
+    return render_template("home.html", user_email=session.get("email"))
+
+
+@app.route("/demo", methods=["GET"])
+def demo():
     return render_template("dashboard.html", user_email=session.get("email"))
 
 
