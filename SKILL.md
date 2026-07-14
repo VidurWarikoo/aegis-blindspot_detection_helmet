@@ -60,12 +60,13 @@ Response:
 
 Accepts a single image and returns a threat assessment for every detected object in that frame. Since a single image carries no temporal information, the kinematic term of the scoring function described below is identically zero here, so only the static proximity term contributes to the final score. This endpoint exists as a fast sanity check of the underlying detector, and for the complete methodology you should use `POST /analyze_video` instead.
 
+**Example Request:**
 ```bash
 curl -X POST https://web-production-9062c.up.railway.app/analyze \
   -F "file=@road_photo.jpg"
 ```
 
-Response:
+**Example Response:**
 
 ```json
 {
@@ -87,12 +88,13 @@ Response:
 
 Accepts a video clip and runs the complete temporal pipeline described in the methodology section below: persistent multi object tracking, trend window smoothing, convergence classification, and hysteresis based threat selection. Returns every medium or high severity alert event that fired during the clip, along with the single peak threat.
 
+**Example Request:**
 ```bash
 curl -X POST https://web-production-9062c.up.railway.app/analyze_video \
   -F "file=@dashcam_clip.mp4"
 ```
 
-Response:
+**Example Response:**
 
 ```json
 {
@@ -112,6 +114,7 @@ Response:
 
 The primary way real data reaches this service. The helmet (see `helmet_local.py`) already ran detection, scored the threat, and fired its own LEDs/motor entirely offline before this request is ever sent, this call exists purely to make that event show up on `/history` later. Uploads are asynchronous and best-effort: the helmet durably queues every medium/high alert locally the moment it fires and retries this call in the background whenever a connection exists, so it can arrive seconds or hours after the real event.
 
+**Example Request:**
 ```bash
 curl -X POST https://web-production-9062c.up.railway.app/api/ingest \
   -F "timestamp=2026-07-12T14:03:11.204000Z" -F "class=truck" -F "side=LEFT" \
@@ -119,7 +122,7 @@ curl -X POST https://web-production-9062c.up.railway.app/api/ingest \
   -F "clip=@nearmiss_2026-07-12T14-03-11.204000Z_truck_LEFT.mp4"
 ```
 
-Response:
+**Example Reason:**
 
 ```json
 { "status": "ok", "logged": true, "clip_saved": true }
@@ -135,11 +138,12 @@ These three still exist and still work exactly as before, but they are no longer
 
 Returns the alert history as JSON, used by `/history` to build its charts and table. This now reflects real rides uploaded via `POST /api/ingest`, alongside anything generated through the `/demo` page. Accepts an optional `days` query parameter, defaulting to 30, and an optional `limit`, defaulting to 500.
 
+**Example Request:**
 ```bash
 curl "https://web-production-9062c.up.railway.app/api/alerts?days=7&limit=3"
 ```
 
-Response:
+**Example Response:**
 
 ```json
 [
@@ -166,20 +170,23 @@ curl https://web-production-9062c.up.railway.app/api/clips
 
 Two additional endpoints exist purely to make the dashboard demo-able, and are not part of the core detection capability. `POST /api/seed_demo_data` inserts a batch of realistic looking alert rows tagged `source: "demo"`, spanning the past week, so the `/history` charts have something to show before real usage accumulates. It never touches real alerts, and is safe to call more than once.
 
+**Example Request:**
 ```bash
 curl -X POST https://web-production-9062c.up.railway.app/api/seed_demo_data
 ```
-
+**Example Response:**
 ```json
 { "status": "ok", "inserted": 27 }
 ```
 
 `POST /api/clear_demo_data` removes every row tagged `source: "demo"`, leaving real helmet and simulated alerts untouched, intended to be run once before final judging or before recording with real footage.
 
+**Example Request:**
 ```bash
 curl -X POST https://web-production-9062c.up.railway.app/api/clear_demo_data
 ```
 
+**Example Response:**
 ```json
 { "status": "ok", "removed": 27 }
 ```
@@ -195,7 +202,7 @@ curl -X POST https://web-production-9062c.up.railway.app/api/clear_demo_data
 7. To assess a pre-recorded clip end to end, call `POST /analyze_video` and read `events` for every medium or high alert that fired during the clip, or just `peak_threat` if you only care about the single worst moment.
 8. To demo the live pipeline visually without a real helmet present, call `POST /simulate_stream` and watch `/demo` in a browser, or consume `WS /ws/dashboard` directly. This is a demo utility only, real rides never go through it.
 9. Across every endpoint, `threat_level` / `level` takes the values `none`, `low`, `medium`, or `high`. Treat `medium` and `high` as actionable, `low` and `none` as informational only.
-10. Across every endpoint, `side` is `LEFT` or `RIGHT`, indicating which side of the frame, and therefore the rider, the threat occupies.
+10. Across every endpoint, `side` is `LEFT` or `RIGHT`, indicating which side of the frame (and the rider) the threat occupies.
 
 ## Threat scoring methodology
 
