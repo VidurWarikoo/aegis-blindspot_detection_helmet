@@ -46,7 +46,6 @@ import os
 import queue
 import random
 import sqlite3
-import string
 import tempfile
 import threading
 import time
@@ -106,21 +105,17 @@ dashboard_lock = threading.Lock()
 # concurrent broadcasts from colliding on the same underlying socket.
 dashboard_send_locks = {}
 
-# Demo-flow helmet pairing. This is deliberately not real device authentication: the
-# code exists so the product can be demoed with a believable "log in, then pair your
-# helmet with this code" flow, but every helmet and every logged-in browser still
-# share the exact same live feed and history underneath. Regenerated each time the
-# server process starts.
-SYNC_CODE = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
-pairing_lock = threading.Lock()
-helmet_paired = False
-
-# The rider's personal sync code, asked once right after a fresh login (see
-# /sync below) before the account can view any ride data. Unlike SYNC_CODE above
-# (a decorative, always-changing display value), this one is a fixed, real check.
+# The rider's personal sync code. Two things both key off this single value now:
+# the /sync step asked once right after a fresh login (see sync_code() below)
+# before the account can view any ride data, and the "Helmet sync" panel on the
+# /demo page, which just displays it for reference. They're intentionally the same
+# code, not two separate ones, so there's nothing to keep in sync between them.
 # Overridable via env var so it isn't hardcoded in a real deployment; defaults to
 # the value used during development.
 SYNC_ACCESS_CODE = os.environ.get("SYNC_ACCESS_CODE", "123456")
+SYNC_CODE = SYNC_ACCESS_CODE
+pairing_lock = threading.Lock()
+helmet_paired = False
 
 
 def mark_helmet_paired():
